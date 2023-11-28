@@ -43,6 +43,7 @@ class Distribution:
         
         self.timegrid_ms = np.zeros(g_time)
         self.f_re_avg_density = np.zeros((g_time, g_radii, g_p_re))
+        self.f_re_avg = np.zeros((g_time, g_radii, g_p_re))
         self.n_re = np.zeros((g_time, g_radii))
         self.n_tot = np.zeros((g_time, g_radii))
         
@@ -67,6 +68,7 @@ class Distribution:
             do = DREAMOutput(file)
             if self.runawaygrid_enabled:
                 self.f_re_avg_density[ti:end, :, :] = do.eqsys.f_re.angleAveraged(moment="density")[1:, :, :]
+                self.f_re_avg[ti:end, :, :] = do.eqsys.f_re.angleAveraged()[1:, :, :]
                 
             do.close()
             

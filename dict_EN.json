@@ -1,0 +1,9 @@
+{
+    "time": "Time", 
+    "radius": "Minor radius",
+    "_currents": {
+        "ylabel": "Currents [MA]",
+        "xlabel": "Time [ms]",
+        "labels": ["$I_{\rm p}$", "$I_{\rm RE}$", "$I_{\rm wall}$", "$I_{\rm ohm}$"]
+    }
+}
