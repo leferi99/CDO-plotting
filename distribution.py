@@ -67,14 +67,18 @@ class Distribution:
             # DREAMOutput methods
             do = DREAMOutput(file)
             if self.runawaygrid_enabled:
-                self.f_re_avg_density[ti:end, :, :] = do.eqsys.f_re.angleAveraged(moment="density")[1:, :, :]
-                self.f_re_avg[ti:end, :, :] = do.eqsys.f_re.angleAveraged()[1:, :, :]
+                self.f_re_avg_density[ti:end, :, :] = do.eqsys.f_re.angleAveraged(moment="density")[1:, :, :]  # f*p**2
+                self.f_re_avg[ti:end, :, :] = do.eqsys.f_re.angleAveraged()[1:, :, :] # moment="distribution" integrates over xi0
                 
             do.close()
             
             # Increase the indices
             rt += temptime[-1]
             ti += len(temptime)
+
+            """
+            (avg_density / (p**2)) * (mc**2 *p) / sqrt(p**2 + 1)
+            """
             
         
         
