@@ -79,10 +79,3 @@ class Distribution:
             """
             (avg_density / (p**2)) * (mc**2 *p) / sqrt(p**2 + 1)
             """
-            
-        
-        
-            
-            
-
-
