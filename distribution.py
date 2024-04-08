@@ -1,5 +1,6 @@
 import numpy as np
 import h5py
+import scipy.constants
 from DREAM.DREAMOutput import DREAMOutput
 
 
@@ -7,6 +8,9 @@ class Distribution:
     def __init__(self, filenames, start_time=0):        
         # Set up grids from the first file
         f = h5py.File(filenames[0], "r")
+        m_e = scipy.constants.m_e
+        c = scipy.constants.c
+        mec2 = 510998.95  # eV
 
         self.radialgrid = f["grid/r"][()]
         self.radialgrid_edges = f["grid/r_f"][()]
@@ -22,10 +26,15 @@ class Distribution:
         # RUNAWAYGRID
         if self.runawaygrid_enabled:
             # momentum and pitchgrid - runaway
-            self.re_momentumgrid = f["grid/runaway/p1"][()]  # in m_e*c normalized momentum
+            self.re_momentumgrid = f["grid/runaway/p1"][()] # in m_e*c normalized momentum
+            self.re_pitchgrid = f["grid/runaway/p2"][()]
             self.re_momentumgrid_edges = f["grid/runaway/p1_f"][()]  # in m_e*c normalized momentum
-            # energy grid in MeV
-            self.re_energygrid_MeV = ((np.sqrt(self.re_momentumgrid ** 2 + 1) - 1) * 0.51099895)
+            # energy grid
+            self.re_energygrid_eV = ((np.sqrt(self.re_momentumgrid ** 2 + 1) - 1) * mec2) + mec2
+            self.re_energygrid_Joule = ((np.sqrt(self.re_momentumgrid ** 2 + 1) - 1) * m_e * c ** 2) + m_e * c ** 2
+            self.re_energygrid_edges_Joule = ((np.sqrt(self.re_momentumgrid_edges ** 2 + 1) - 1) * m_e * c ** 2)
+            self.velocity_grid = (self.re_momentumgrid * c)/np.sqrt(self.re_momentumgrid ** 2 + 1)
+            self.momentum_with_KE = np.sqrt((self.re_energygrid_Joule ** 2 / c ** 2) + self.re_energygrid_Joule * m_e)
         
         f.close()
         
@@ -44,6 +53,7 @@ class Distribution:
         self.timegrid_ms = np.zeros(g_time)
         self.f_re_avg_density = np.zeros((g_time, g_radii, g_p_re))
         self.f_re_avg = np.zeros((g_time, g_radii, g_p_re))
+        self.f_re_current_density = np.zeros((g_time, g_radii, g_p_re))
         self.n_re = np.zeros((g_time, g_radii))
         self.n_tot = np.zeros((g_time, g_radii))
         
@@ -67,8 +77,10 @@ class Distribution:
             # DREAMOutput methods
             do = DREAMOutput(file)
             if self.runawaygrid_enabled:
-                self.f_re_avg_density[ti:end, :, :] = do.eqsys.f_re.angleAveraged(moment="density")[1:, :, :]  # f*p**2
+                self.f_re_avg_density[ti:end, :, :] = do.eqsys.f_re.angleAveraged(moment="density")[1:, :, :]  # f*p**2 # this is supposedly dn/(drdp)
                 self.f_re_avg[ti:end, :, :] = do.eqsys.f_re.angleAveraged()[1:, :, :] # moment="distribution" integrates over xi0
+                # Current density for comparison
+                self.f_re_current_density[ti:end, :, :] = do.eqsys.f_re.angleAveraged(moment="current")[1:, :, :]
                 
             do.close()
             
@@ -79,3 +91,17 @@ class Distribution:
             """
             (avg_density / (p**2)) * (mc**2 *p) / sqrt(p**2 + 1)
             """
+
+        # dimensions: time x radius x energy
+        # self.dnOverdrdE = self.f_re_avg_density * ((self.re_energygrid_Joule + m_e * c **2) / (c *  np.sqrt((self.re_energygrid_Joule + m_e * c ** 2) ** 2 - (m_e * c ** 2) ** 2)))
+        # self.dnOverdrdE = self.f_re_avg_density * ((self.re_momentumgrid * m_e * c ** 2) / np.sqrt(self.re_momentumgrid ** 2 + m_e * c ** 2))
+        # self.dnOverdrdE = self.f_re_avg_density * ((2 * self.re_energygrid_Joule + m_e * c ** 2) / (2 * c *  np.sqrt(self.re_energygrid_Joule * (self.re_energygrid_Joule + m_e * c ** 2))))
+        self.dnOverdrdE = self.f_re_avg_density * (self.re_energygrid_Joule / (m_e * c ** 2 * np.sqrt(self.re_energygrid_Joule ** 2 - (m_e * c ** 2) ** 2)))
+        self.dnOverdr = np.zeros((g_time, g_radii))
+        self.alternate_current = np.zeros((g_time, g_radii))
+        for i in range(g_p_re):
+            self.dnOverdr += (self.re_energygrid_edges_Joule[i+1] - self.re_energygrid_edges_Joule[i]) * self.dnOverdrdE[:, :, i]
+            self.alternate_current += (self.re_energygrid_edges_Joule[i+1] - self.re_energygrid_edges_Joule[i]) * self.velocity_grid[i] * self.dnOverdrdE[:, :, i] * scipy.constants.e
+
+        
+
