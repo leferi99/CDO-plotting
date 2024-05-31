@@ -72,14 +72,18 @@ class CustomConcat:
         g_time = self.timegrid_length
         g_radii = self.radialgrid_length
         g_ions = self.ion_states
-        g_p_hot = self.hottailgrid_dimensions[0]
-        g_xi_hot = self.hottailgrid_dimensions[1]
-        g_p_re = self.runawaygrid_dimensions[0]
-        g_xi_re = self.runawaygrid_dimensions[1]
+        if self.hottailgrid_enabled:
+            g_p_hot = self.hottailgrid_dimensions[0]
+            g_xi_hot = self.hottailgrid_dimensions[1]
+        if self.runawaygrid_enabled:    
+            g_p_re = self.runawaygrid_dimensions[0]
+            g_xi_re = self.runawaygrid_dimensions[1]
         
         self.timegrid = np.zeros(g_time)
         self.timegrid_ms = np.zeros(g_time)
         self.E_field = np.zeros((g_time, g_radii))
+        self.Ectot = np.zeros((g_time, g_radii))
+        self.Ecfree = np.zeros((g_time, g_radii))
         self.I_p = np.zeros(g_time)
         self.I_wall = np.zeros(g_time)
         self.T_cold = np.zeros((g_time, g_radii))
@@ -99,6 +103,7 @@ class CustomConcat:
         self.Wcold_Tcold_Drr = np.zeros((g_time, g_radii + 1))
         self.gammaCompton = np.zeros((g_time, g_radii))
         self.gammaDreicer = np.zeros((g_time, g_radii))
+        self.gammaHot = np.zeros((g_time, g_radii))
         self.gammaTritium = np.zeros((g_time, g_radii))
         self.runawayRate = np.zeros((g_time, g_radii))
         self.flux_to_RE = np.zeros((g_time, g_radii))
@@ -152,6 +157,8 @@ class CustomConcat:
             
             # 2D
             self.E_field[ti:end, :] = f["eqsys/E_field"][()][1:, :]
+            self.Ectot[ti:end, :] = f["other/fluid/Ectot"][()][:, :]
+            self.Ecfree[ti:end, :] = f["other/fluid/Ecfree"][()][:, :]
             self.T_cold[ti:end, :] = f["eqsys/T_cold"][()][1:, :]
             self.W_cold[ti:end, :] = f["eqsys/W_cold"][()][1:, :]  # cold electron energy density
 
@@ -160,12 +167,16 @@ class CustomConcat:
                 for j in range(g_radii):
                     self.W_cold_sum[i] += self.W_cold[i, j] * self.real_volumes_of_cells[j]
 
-            self.j_hot[ti:end, :] = f["eqsys/j_hot"][()][1:, :]
+            if self.hottailgrid_enabled:
+                self.j_hot[ti:end, :] = f["eqsys/j_hot"][()][1:, :]
+                self.n_hot[ti:end, :] = f["eqsys/n_hot"][()][1:, :]
+                self.W_hot[ti:end, :] = f["other/fluid/W_hot"][()]
+
             self.j_re[ti:end, :] = f["eqsys/j_re"][()][1:, :]
             self.j_ohm[ti:end, :] = f["eqsys/j_ohm"][()][1:, :]
             self.j_tot[ti:end, :] = f["eqsys/j_tot"][()][1:, :]
             self.n_cold[ti:end, :] = f["eqsys/n_cold"][()][1:, :]
-            self.n_hot[ti:end, :] = f["eqsys/n_hot"][()][1:, :]
+            
             self.n_re[ti:end, :] = f["eqsys/n_re"][()][1:, :]
             self.n_tot[ti:end, :] = f["eqsys/n_tot"][()][1:, :]
             
@@ -175,27 +186,31 @@ class CustomConcat:
             self.pCrit[ti:end, :] = f["other/fluid/pCrit"][()]
             
             self.gammaAva[ti:end, :] = f["other/fluid/GammaAva"][()]
-            self.Tcold_fhot_coll[ti:end, :] = f["other/fluid/Tcold_fhot_coll"][()]
-            self.Tcold_fre_coll[ti:end, :] = f["other/fluid/Tcold_fre_coll"][()]
+            
             self.Tcold_ohmic[ti:end, :] = f["other/fluid/Tcold_ohmic"][()]
             self.Tcold_radiation[ti:end, :] = f["other/fluid/Tcold_radiation"][()]
             self.Tcold_transport[ti:end, :] = f["other/fluid/Tcold_transport"][()]
-            self.W_hot[ti:end, :] = f["other/fluid/W_hot"][()]
+            
             self.W_re[ti:end, :] = f["other/fluid/W_re"][()]
             self.Wcold_Tcold_Drr[ti:end, :] = f["other/fluid/Wcold_Tcold_Drr"][()]
             self.gammaCompton[ti:end, :] = f["other/fluid/gammaCompton"][()]
             self.gammaDreicer[ti:end, :] = f["other/fluid/gammaDreicer"][()]
+
+            try:
+                self.gammaHot[ti:end, :] = f["other/fluid/gammaHottail"][()]
+            except:
+                pass
+            
             self.gammaTritium[ti:end, :] = f["other/fluid/gammaTritium"][()]
             self.runawayRate[ti:end, :] = f["other/fluid/runawayRate"][()]
-            
-            # 3D
             self.n_i[ti:end, :, :] = f["eqsys/n_i"][()][1:, :, :]
 
-            # 4D
             if self.hottailgrid_enabled:
+                self.Tcold_fhot_coll[ti:end, :] = f["other/fluid/Tcold_fhot_coll"][()]
                 self.f_hot[ti:end, :, :, :] = f["eqsys/f_hot"][()][1:, :, :, :]  # time; radii; pitch; momentum
 
             if self.runawaygrid_enabled:
+                self.Tcold_fre_coll[ti:end, :] = f["other/fluid/Tcold_fre_coll"][()]
                 self.f_re[ti:end, :, :, :] = f["eqsys/f_re"][()][1:, :, :, :]  # time; radii; pitch; momentum
             
             # Close the HDF5 file
@@ -203,7 +218,8 @@ class CustomConcat:
             
             # Finish with the DREAMOutput methods
             do = DREAMOutput(file)
-            self.I_hot[ti:end] = do.eqsys.j_hot.current()[1:]
+            if self.hottailgrid_enabled:
+                self.I_hot[ti:end] = do.eqsys.j_hot.current()[1:]
             self.I_re[ti:end] = do.eqsys.j_re.current()[1:]
             self.I_ohm[ti:end] = do.eqsys.j_ohm.current()[1:]
             if self.runawaygrid_enabled:

@@ -5,3 +5,6 @@
 /DREAM
 /__pycache__
 /git_ignore
+tests.py
+.idea/inspectionProfiles/profiles_settings.xml
+/.idea

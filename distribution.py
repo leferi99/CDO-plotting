@@ -55,6 +55,8 @@ class Distribution:
         self.f_re_avg = np.zeros((g_time, g_radii, g_p_re))
         self.f_re_current_density = np.zeros((g_time, g_radii, g_p_re))
         self.n_re = np.zeros((g_time, g_radii))
+        self.j_re = np.zeros((g_time, g_radii))
+        self.I_re = np.zeros((g_time))
         self.n_tot = np.zeros((g_time, g_radii))
         
         # Filling up the object with data from multiple files
@@ -62,6 +64,7 @@ class Distribution:
         rt = 0
         for file in filenames:
             f = h5py.File(file, "r")
+            do = DREAMOutput(file)
             
             # 1D
             temptime = f["grid/t"][()][1:] * 1000
@@ -69,6 +72,8 @@ class Distribution:
             
             self.timegrid_ms[ti:end] = temptime + rt
             self.n_re[ti:end, :] = f["eqsys/n_re"][()][1:, :]
+            self.j_re[ti:end, :] = f["eqsys/j_re"][()][1:, :]
+            self.I_re[ti:end] = do.eqsys.j_re.current()[1:]
             self.n_tot[ti:end, :] = f["eqsys/n_tot"][()][1:, :]
             
             # Close the HDF5 file
