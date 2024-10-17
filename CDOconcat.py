@@ -12,7 +12,10 @@ class CustomConcat:
         self.radialgrid_edges = f["grid/r_f"][()]
         self.radialgrid_length = len(self.radialgrid)
         self.radial_step = f["grid/dr"][()][1]
-        self.major_radius = f["settings/radialgrid/R0"][()]
+        try:
+            self.major_radius = f["settings/radialgrid/R0"][()]
+        except:
+            print("Cylindrical grid")
         self.minor_radius = f["settings/radialgrid/a"][()]
         
         # Other constant parameters
@@ -144,6 +147,7 @@ class CustomConcat:
         ti = 0
         rt = 0
         for file in filenames:
+            print(file, end="\r")
             f = h5py.File(file, "r")
             
             # 1D
@@ -189,7 +193,10 @@ class CustomConcat:
             
             self.Tcold_ohmic[ti:end, :] = f["other/fluid/Tcold_ohmic"][()]
             self.Tcold_radiation[ti:end, :] = f["other/fluid/Tcold_radiation"][()]
-            self.Tcold_transport[ti:end, :] = f["other/fluid/Tcold_transport"][()]
+            try:
+                self.Tcold_transport[ti:end, :] = f["other/fluid/Tcold_transport"][()]
+            except:
+                print("Tcold_transport not loaded")
             
             self.W_re[ti:end, :] = f["other/fluid/W_re"][()]
             self.Wcold_Tcold_Drr[ti:end, :] = f["other/fluid/Wcold_Tcold_Drr"][()]
@@ -205,7 +212,8 @@ class CustomConcat:
             self.runawayRate[ti:end, :] = f["other/fluid/runawayRate"][()]
             self.n_i[ti:end, :, :] = f["eqsys/n_i"][()][1:, :, :]
 
-            if self.hottailgrid_enabled:
+            # if self.hottailgrid_enabled:
+            if False:
                 self.Tcold_fhot_coll[ti:end, :] = f["other/fluid/Tcold_fhot_coll"][()]
                 self.f_hot[ti:end, :, :, :] = f["eqsys/f_hot"][()][1:, :, :, :]  # time; radii; pitch; momentum
 
@@ -249,6 +257,8 @@ class CustomConcat:
                     temp2 += self.density_Ar[i, j, :] * self.real_volumes_of_cells
 
                 self.avg_Ar_ionization[i] = temp1 / temp2
+                
+        print("\n")
 
     def info(self):
         """
