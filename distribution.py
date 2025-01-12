@@ -18,7 +18,9 @@ class Distribution:
         self.dr = f["grid/dr"][()]
         self.major_radius = f["settings/radialgrid/R0"][()]
         self.minor_radius = f["settings/radialgrid/a"][()]
-        self.real_volumes_of_cells = f["grid/VpVol"][()]  # m^3
+        # self.real_volumes_of_cells = f["grid/VpVol"][()]  # this was used but this is not correct
+        # The next line is the correct
+        self.real_volumes_of_cells = f["grid/VpVol"][()] * self.dr * self.major_radius
 
         # runawaygrid setting
         self.runawaygrid_enabled = f["settings/runawaygrid/enabled"][()]
@@ -61,7 +63,7 @@ class Distribution:
         
         # Filling up the object with data from multiple files
         ti = 0
-        rt = 0
+        rt = start_time
         for file in filenames:
             f = h5py.File(file, "r")
             do = DREAMOutput(file)

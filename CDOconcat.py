@@ -5,6 +5,7 @@ from DREAM.DREAMOutput import DREAMOutput
 
 class CustomConcat:
     def __init__(self, filenames):        
+        mec2 = 510998.95  # eV
         # Set up grids from the first file
         f = h5py.File(filenames[0], "r")
 
@@ -23,7 +24,7 @@ class CustomConcat:
         self.ion_states = f["eqsys/n_i"][()].shape[1]
         self.ion_Z = f["ionmeta/Z"][()]  # atomic number of the ions
         self.ion_names = f["ionmeta/names"][()]  # user set names for ions
-        self.real_volumes_of_cells = f["grid/VpVol"][()]  # m^3
+        self.real_volumes_of_cells = f["grid/VpVol"][()] * self.radial_step * self.major_radius  # m^3
 
         # hottail and runawaygrid settings
         self.hottailgrid_enabled = f["settings/hottailgrid/enabled"][()]
@@ -55,7 +56,7 @@ class CustomConcat:
             self.runawaygrid_dimensions = (len(self.re_momentumgrid), len(self.re_pitchgrid))
 
             # energy grid from the momentum grid - runaway
-            self.re_energy_grid_electronvolts = self.re_momentumgrid * 510998.95
+            self.re_energy_grid_electronvolts = ((np.sqrt(self.re_momentumgrid ** 2 + 1) - 1) * mec2) + mec2
             
             # common momentumgrid
             self.full_momentumgrid = np.concatenate((self.hot_momentumgrid, self.re_momentumgrid))
@@ -195,11 +196,11 @@ class CustomConcat:
             self.Tcold_radiation[ti:end, :] = f["other/fluid/Tcold_radiation"][()]
             try:
                 self.Tcold_transport[ti:end, :] = f["other/fluid/Tcold_transport"][()]
+                self.Wcold_Tcold_Drr[ti:end, :] = f["other/fluid/Wcold_Tcold_Drr"][()]
             except:
-                print("Tcold_transport not loaded")
+                print("Tcold_transport + Wcold_Tcold_Drr not loaded")
             
             self.W_re[ti:end, :] = f["other/fluid/W_re"][()]
-            self.Wcold_Tcold_Drr[ti:end, :] = f["other/fluid/Wcold_Tcold_Drr"][()]
             self.gammaCompton[ti:end, :] = f["other/fluid/gammaCompton"][()]
             self.gammaDreicer[ti:end, :] = f["other/fluid/gammaDreicer"][()]
 
@@ -212,8 +213,7 @@ class CustomConcat:
             self.runawayRate[ti:end, :] = f["other/fluid/runawayRate"][()]
             self.n_i[ti:end, :, :] = f["eqsys/n_i"][()][1:, :, :]
 
-            # if self.hottailgrid_enabled:
-            if False:
+            if self.hottailgrid_enabled:
                 self.Tcold_fhot_coll[ti:end, :] = f["other/fluid/Tcold_fhot_coll"][()]
                 self.f_hot[ti:end, :, :, :] = f["eqsys/f_hot"][()][1:, :, :, :]  # time; radii; pitch; momentum
 
