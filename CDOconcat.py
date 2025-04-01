@@ -1,41 +1,43 @@
 import numpy as np
 import h5py
+from bisect import bisect_left
 from DREAM.DREAMOutput import DREAMOutput
 
 
 class CustomConcat:
     def __init__(self, filenames):        
         mec2 = 510998.95  # eV
-        # Set up grids from the first file
-        f = h5py.File(filenames[0], "r")
+        # Set up grids from the last file - deliberately changed from first to last
+        # in case there was a change in DREAM settings along the simulation
+        f = h5py.File(filenames[-1], "r")
 
-        self.radialgrid = f["grid/r"][()]
-        self.radialgrid_edges = f["grid/r_f"][()]
+        self.radialgrid = np.asarray(f["grid/r"])
+        self.radialgrid_edges = np.asarray(f["grid/r_f"])
         self.radialgrid_length = len(self.radialgrid)
-        self.radial_step = f["grid/dr"][()][1]
+        self.radial_step = np.asarray(f["grid/dr"])[1]
         try:
-            self.major_radius = f["settings/radialgrid/R0"][()]
+            self.major_radius = np.asarray(f["settings/radialgrid/R0"])
         except:
             print("Cylindrical grid")
-        self.minor_radius = f["settings/radialgrid/a"][()]
+        self.minor_radius = np.asarray(f["settings/radialgrid/a"])
         
         # Other constant parameters
         # Number of ion states, ion metadata and volumes
-        self.ion_states = f["eqsys/n_i"][()].shape[1]
-        self.ion_Z = f["ionmeta/Z"][()]  # atomic number of the ions
-        self.ion_names = f["ionmeta/names"][()]  # user set names for ions
-        self.real_volumes_of_cells = f["grid/VpVol"][()] * self.radial_step * self.major_radius  # m^3
+        self.ion_states = np.asarray(f["eqsys/n_i"]).shape[1]
+        self.ion_Z = np.asarray(f["ionmeta/Z"])  # atomic number of the ions
+        self.ion_names = np.asarray(f["ionmeta/names"])  # user set names for ions
+        self.real_volumes_of_cells = np.asarray(f["grid/VpVol"]) * self.radial_step * self.major_radius  # m^3
 
         # hottail and runawaygrid settings
-        self.hottailgrid_enabled = f["settings/hottailgrid/enabled"][()]
-        self.runawaygrid_enabled = f["settings/runawaygrid/enabled"][()]
+        self.hottailgrid_enabled = np.asarray(f["settings/hottailgrid/enabled"])
+        self.runawaygrid_enabled = np.asarray(f["settings/runawaygrid/enabled"])
         
         if self.hottailgrid_enabled:
             # momentum and pitchgrid - hottail
-            self.hot_momentumgrid = f["grid/hottail/p1"][()]  # in m_e*c normalized momentum
-            self.hot_momentumgrid_edges = f["grid/hottail/p1_f"][()]  # in m_e*c normalized momentum - edges
-            self.hot_pitchgrid = f["grid/hottail/p2"][()]  # cosine of pitch angle - cell centers
-            self.hot_pitchgrid_edges = f["grid/hottail/p2_f"][()]  # cosine of pitch angle - cell edges
+            self.hot_momentumgrid = np.asarray(f["grid/hottail/p1"])  # in m_e*c normalized momentum
+            self.hot_momentumgrid_edges = np.asarray(f["grid/hottail/p1_f"])  # in m_e*c normalized momentum - edges
+            self.hot_pitchgrid = np.asarray(f["grid/hottail/p2"])  # cosine of pitch angle - cell centers
+            self.hot_pitchgrid_edges = np.asarray(f["grid/hottail/p2_f"])  # cosine of pitch angle - cell edges
             self.hot_pitchgrid_rad = np.arccos(self.hot_pitchgrid)  # pitch angle in radians - cell centers
             self.hot_pitchgrid_rad_edges = np.arccos(self.hot_pitchgrid_edges)  # pitch angle in radians - cell edges
             self.hot_pitchgrid_degrees = 180 * self.hot_pitchgrid_rad / np.pi  # pitch degrees - centers
@@ -45,10 +47,10 @@ class CustomConcat:
         # RUNAWAYGRID
         if self.runawaygrid_enabled:
             # momentum and pitchgrid - runaway
-            self.re_momentumgrid = f["grid/runaway/p1"][()]  # in m_e*c normalized momentum
-            self.re_momentumgrid_edges = f["grid/runaway/p1_f"][()]  # in m_e*c normalized momentum
-            self.re_pitchgrid = f["grid/runaway/p2"][()]  # cosine of pitch angle - cell centers
-            self.re_pitchgrid_edges = f["grid/runaway/p2_f"][()]  # cosine of pitch angle - cell edges
+            self.re_momentumgrid = np.asarray(f["grid/runaway/p1"])  # in m_e*c normalized momentum
+            self.re_momentumgrid_edges = np.asarray(f["grid/runaway/p1_f"])  # in m_e*c normalized momentum
+            self.re_pitchgrid = np.asarray(f["grid/runaway/p2"])  # cosine of pitch angle - cell centers
+            self.re_pitchgrid_edges = np.asarray(f["grid/runaway/p2_f"])  # cosine of pitch angle - cell edges
             self.re_pitchgrid_rad = np.arccos(self.re_pitchgrid)  # pitch angle in radians - cell centers
             self.re_pitchgrid_rad_edges = np.arccos(self.re_pitchgrid_edges)  # pitch angle in radians - cell edges
             self.re_pitchgrid_degrees = 180 * self.re_pitchgrid_rad / np.pi  # pitch angle in degreess - cell centers
@@ -67,7 +69,7 @@ class CustomConcat:
         self.timegrid_length = 0
         for file in filenames:
             f = h5py.File(file, "r")
-            self.timegrid_length = self.timegrid_length + len(f["grid/t"][()]) - 1
+            self.timegrid_length = self.timegrid_length + len(np.asarray(f["grid/t"])) - 1
             # Because of this previous -1 we will have throw away 
             # the first timestep data for almost everything
             f.close()  # NOTE
@@ -76,12 +78,20 @@ class CustomConcat:
         g_time = self.timegrid_length
         g_radii = self.radialgrid_length
         g_ions = self.ion_states
+        
         if self.hottailgrid_enabled:
             g_p_hot = self.hottailgrid_dimensions[0]
             g_xi_hot = self.hottailgrid_dimensions[1]
+        else:
+            g_p_hot = None  # to avoid being unbound
+            g_xi_hot = None
+
         if self.runawaygrid_enabled:    
             g_p_re = self.runawaygrid_dimensions[0]
             g_xi_re = self.runawaygrid_dimensions[1]
+        else:
+            g_p_re = None
+            g_xi_re = None
         
         self.timegrid = np.zeros(g_time)
         self.timegrid_ms = np.zeros(g_time)
@@ -114,18 +124,20 @@ class CustomConcat:
         
         # NOTE DREAMOutput class has to be used to get some integrated currents (I_hot, I_re, I_ohm)
         # and f_re_avg
-        if self.hottailgrid_enabled:
+        if g_p_hot is not None and g_xi_hot is not None:
             self.f_hot = np.zeros((g_time, g_radii, g_xi_hot, g_p_hot))
             self.j_hot = np.zeros((g_time, g_radii))
             self.I_hot = np.zeros(g_time)
             self.n_hot = np.zeros((g_time, g_radii))
             
-        if self.runawaygrid_enabled:
+        if g_p_re is not None and g_xi_re is not None:
             self.f_re = np.zeros((g_time, g_radii, g_xi_re, g_p_re))
             self.f_re_avg = np.zeros((g_time, g_radii, g_p_re))
+            self.f_re_density = np.zeros((g_time, g_radii, g_p_re))
+
+        if (g_p_hot is not None) and (g_p_re is not None):
             # put together the hottailgrid and the runawaygrid
             self.f_full_avg = np.zeros((g_time, g_radii, g_p_hot + g_p_re))
-            self.f_re_density = np.zeros((g_time, g_radii, g_p_re))
             
         self.j_re = np.zeros((g_time, g_radii))
         self.I_re = np.zeros(g_time)
@@ -152,20 +164,20 @@ class CustomConcat:
             f = h5py.File(file, "r")
             
             # 1D
-            temptime = f["grid/t"][()][1:]
+            temptime = np.asarray(f["grid/t"])[1:]
             end = len(temptime) + ti
             self.timegrid[ti:end] = temptime + rt  
             self.timegrid_ms[ti:end] = self.timegrid[ti:end] * 1000
-            self.I_p[ti:end] = f["eqsys/I_p"][()][1:, 0]
-            self.I_wall[ti:end] = f["eqsys/I_wall"][()][1:, 0]
-            self.V_loop_w[ti:end] = f["eqsys/V_loop_w"][()][1:, 0]
+            self.I_p[ti:end] = np.asarray(f["eqsys/I_p"])[1:, 0]
+            self.I_wall[ti:end] = np.asarray(f["eqsys/I_wall"])[1:, 0]
+            self.V_loop_w[ti:end] = np.asarray(f["eqsys/V_loop_w"])[1:, 0]
             
             # 2D
-            self.E_field[ti:end, :] = f["eqsys/E_field"][()][1:, :]
-            self.Ectot[ti:end, :] = f["other/fluid/Ectot"][()][:, :]
-            self.Ecfree[ti:end, :] = f["other/fluid/Ecfree"][()][:, :]
-            self.T_cold[ti:end, :] = f["eqsys/T_cold"][()][1:, :]
-            self.W_cold[ti:end, :] = f["eqsys/W_cold"][()][1:, :]  # cold electron energy density
+            self.E_field[ti:end, :] = np.asarray(f["eqsys/E_field"])[1:, :]
+            self.Ectot[ti:end, :] = np.asarray(f["other/fluid/Ectot"])[:, :]
+            self.Ecfree[ti:end, :] = np.asarray(f["other/fluid/Ecfree"])[:, :]
+            self.T_cold[ti:end, :] = np.asarray(f["eqsys/T_cold"])[1:, :]
+            self.W_cold[ti:end, :] = np.asarray(f["eqsys/W_cold"])[1:, :]  # cold electron energy density
 
             for i in range(ti, end):
                 self.W_cold_sum[i] = 0
@@ -173,53 +185,59 @@ class CustomConcat:
                     self.W_cold_sum[i] += self.W_cold[i, j] * self.real_volumes_of_cells[j]
 
             if self.hottailgrid_enabled:
-                self.j_hot[ti:end, :] = f["eqsys/j_hot"][()][1:, :]
-                self.n_hot[ti:end, :] = f["eqsys/n_hot"][()][1:, :]
-                self.W_hot[ti:end, :] = f["other/fluid/W_hot"][()]
+                self.j_hot[ti:end, :] = np.asarray(f["eqsys/j_hot"])[1:, :]
+                self.n_hot[ti:end, :] = np.asarray(f["eqsys/n_hot"])[1:, :]
+                self.W_hot[ti:end, :] = np.asarray(f["other/fluid/W_hot"])
 
-            self.j_re[ti:end, :] = f["eqsys/j_re"][()][1:, :]
-            self.j_ohm[ti:end, :] = f["eqsys/j_ohm"][()][1:, :]
-            self.j_tot[ti:end, :] = f["eqsys/j_tot"][()][1:, :]
-            self.n_cold[ti:end, :] = f["eqsys/n_cold"][()][1:, :]
+            self.j_re[ti:end, :] = np.asarray(f["eqsys/j_re"])[1:, :]
+            self.j_ohm[ti:end, :] = np.asarray(f["eqsys/j_ohm"])[1:, :]
+            self.j_tot[ti:end, :] = np.asarray(f["eqsys/j_tot"])[1:, :]
+            self.n_cold[ti:end, :] = np.asarray(f["eqsys/n_cold"])[1:, :]
             
-            self.n_re[ti:end, :] = f["eqsys/n_re"][()][1:, :]
-            self.n_tot[ti:end, :] = f["eqsys/n_tot"][()][1:, :]
+            self.n_re[ti:end, :] = np.asarray(f["eqsys/n_re"])[1:, :]
+            self.n_tot[ti:end, :] = np.asarray(f["eqsys/n_tot"])[1:, :]
             
-            self.Eceff[ti:end, :] = f["other/fluid/Eceff"][()]
-            self.Zeff[ti:end, :] = f["other/fluid/Zeff"][()]
-            self.conductivity[ti:end, :] = f["other/fluid/conductivity"][()]
-            self.pCrit[ti:end, :] = f["other/fluid/pCrit"][()]
+            self.Eceff[ti:end, :] = np.asarray(f["other/fluid/Eceff"])
+            self.Zeff[ti:end, :] = np.asarray(f["other/fluid/Zeff"])
+            self.conductivity[ti:end, :] = np.asarray(f["other/fluid/conductivity"])
+            self.pCrit[ti:end, :] = np.asarray(f["other/fluid/pCrit"])
             
-            self.gammaAva[ti:end, :] = f["other/fluid/GammaAva"][()]
+            self.gammaAva[ti:end, :] = np.asarray(f["other/fluid/GammaAva"])
             
-            self.Tcold_ohmic[ti:end, :] = f["other/fluid/Tcold_ohmic"][()]
-            self.Tcold_radiation[ti:end, :] = f["other/fluid/Tcold_radiation"][()]
+            self.Tcold_ohmic[ti:end, :] = np.asarray(f["other/fluid/Tcold_ohmic"])
+            self.Tcold_radiation[ti:end, :] = np.asarray(f["other/fluid/Tcold_radiation"])
             try:
-                self.Tcold_transport[ti:end, :] = f["other/fluid/Tcold_transport"][()]
-                self.Wcold_Tcold_Drr[ti:end, :] = f["other/fluid/Wcold_Tcold_Drr"][()]
+                self.Tcold_transport[ti:end, :] = np.asarray(f["other/fluid/Tcold_transport"])
+                self.Wcold_Tcold_Drr[ti:end, :] = np.asarray(f["other/fluid/Wcold_Tcold_Drr"])
             except:
                 print("Tcold_transport + Wcold_Tcold_Drr not loaded")
             
-            self.W_re[ti:end, :] = f["other/fluid/W_re"][()]
-            self.gammaCompton[ti:end, :] = f["other/fluid/gammaCompton"][()]
-            self.gammaDreicer[ti:end, :] = f["other/fluid/gammaDreicer"][()]
+            self.W_re[ti:end, :] = np.asarray(f["other/fluid/W_re"])
+            self.gammaCompton[ti:end, :] = np.asarray(f["other/fluid/gammaCompton"])
+            self.gammaDreicer[ti:end, :] = np.asarray(f["other/fluid/gammaDreicer"])
 
             try:
-                self.gammaHot[ti:end, :] = f["other/fluid/gammaHottail"][()]
+                self.gammaHot[ti:end, :] = np.asarray(f["other/fluid/gammaHottail"])
             except:
-                pass
+                print("Explicit hottail generation (gammaHot) not loaded.")
             
-            self.gammaTritium[ti:end, :] = f["other/fluid/gammaTritium"][()]
-            self.runawayRate[ti:end, :] = f["other/fluid/runawayRate"][()]
-            self.n_i[ti:end, :, :] = f["eqsys/n_i"][()][1:, :, :]
+            self.gammaTritium[ti:end, :] = np.asarray(f["other/fluid/gammaTritium"])
+            self.runawayRate[ti:end, :] = np.asarray(f["other/fluid/runawayRate"])
+            self.n_i[ti:end, :, :] = np.asarray(f["eqsys/n_i"])[1:, :, :]
 
             if self.hottailgrid_enabled:
-                self.Tcold_fhot_coll[ti:end, :] = f["other/fluid/Tcold_fhot_coll"][()]
-                self.f_hot[ti:end, :, :, :] = f["eqsys/f_hot"][()][1:, :, :, :]  # time; radii; pitch; momentum
+                self.Tcold_fhot_coll[ti:end, :] = np.asarray(f["other/fluid/Tcold_fhot_coll"])
+                try:
+                    self.f_hot[ti:end, :, :, :] = np.asarray(f["eqsys/f_hot"])[1:, :, :, :]  # time; radii; pitch; momentum
+                except:
+                    print("Hottail distribution not loaded from file", file, "\n There might be a change in hottailgrid settings between the last output file and this one.")
 
             if self.runawaygrid_enabled:
-                self.Tcold_fre_coll[ti:end, :] = f["other/fluid/Tcold_fre_coll"][()]
-                self.f_re[ti:end, :, :, :] = f["eqsys/f_re"][()][1:, :, :, :]  # time; radii; pitch; momentum
+                self.Tcold_fre_coll[ti:end, :] = np.asarray(f["other/fluid/Tcold_fre_coll"])
+                try:
+                    self.f_re[ti:end, :, :, :] = np.asarray(f["eqsys/f_re"])[1:, :, :, :]  # time; radii; pitch; momentum
+                except:
+                    print("Runaway distribution not loaded from file", file, "\n There might be a change in runawaygrid settings between the last output file and this one.")
             
             # Close the HDF5 file
             f.close()
@@ -231,10 +249,18 @@ class CustomConcat:
             self.I_re[ti:end] = do.eqsys.j_re.current()[1:]
             self.I_ohm[ti:end] = do.eqsys.j_ohm.current()[1:]
             if self.runawaygrid_enabled:
-                self.f_re_avg[ti:end, :, :] = do.eqsys.f_re.angleAveraged()[1:, :, :]
-                self.f_full_avg[ti:end, :, :g_p_hot] = do.eqsys.f_hot.angleAveraged()[1:, :, :]
-                self.f_full_avg[ti:end, :, g_p_hot:] = self.f_re_avg[ti:end, :, :]
-                self.f_re_density[ti:end, :, :] = do.eqsys.f_re.angleAveraged(moment="density")[1:, :, :]
+                try:
+                    self.f_re_avg[ti:end, :, :] = do.eqsys.f_re.angleAveraged()[1:, :, :]
+                    self.f_full_avg[ti:end, :, g_p_hot:] = self.f_re_avg[ti:end, :, :]
+                    self.f_re_density[ti:end, :, :] = do.eqsys.f_re.angleAveraged(moment="density")[1:, :, :]
+                except:
+                    pass
+
+                try:
+                    self.f_full_avg[ti:end, :, :g_p_hot] = do.eqsys.f_hot.angleAveraged()[1:, :, :]
+                except:
+                    pass
+                
                 
             do.close()
             
@@ -253,13 +279,25 @@ class CustomConcat:
         if self.density_Ar.size > 0:
             for i in range(g_time):
                 for j in range(19):
-                    temp1 += j * self.density_Ar[i, j, :] * self.real_volumes_of_cells
-                    temp2 += self.density_Ar[i, j, :] * self.real_volumes_of_cells
+                    temp1 += j * self.density_Ar[i, j, :]
+                    temp2 += self.density_Ar[i, j, :]
 
                 self.avg_Ar_ionization[i] = temp1 / temp2
                 
         print("\n")
 
+    def get_data_at_time_ms(self, time, key):
+        """Returns the data closest to the given time for the specified key."""
+        idx = bisect_left(self.timegrid_ms, time)
+
+        if hasattr(self, key):
+            if getattr(self, key).shape[0] == self.timegrid_length:
+                return getattr(self, key)[idx]  # Return the corresponding data at that index
+            else:
+                raise AttributeError(f"Attribute '{key}' does not have a time dimension.")
+        else:
+            raise KeyError(f"Key '{key}' not found in data.")
+    
     def info(self):
         """
         \033[32m
@@ -287,7 +325,7 @@ class CustomConcatTimeOnly:
         self.timegrid_length = 0
         for file in filenames:
             f = h5py.File(file, "r")
-            self.timegrid_length = self.timegrid_length + len(f["grid/t"][()]) - 1
+            self.timegrid_length = self.timegrid_length + len(np.asarray(f["grid/t"])) - 1
             # Because of this previous -1 we will have throw away 
             # the first timestep data for almost everything
             f.close()  # NOTE
@@ -297,11 +335,11 @@ class CustomConcatTimeOnly:
         self.timegrid = np.zeros(g_time)
         self.timegrid_ms = np.zeros(g_time)
         ti = 0
-        rt = 0
+        rt = start_time
         for file in filenames:
             f = h5py.File(file, "r")
             
-            temptime = f["grid/t"][()][1:]
+            temptime = np.asarray(f["grid/t"])[1:]
             end = len(temptime) + ti
             self.timegrid[ti:end] = temptime + rt  
             self.timegrid_ms[ti:end] = self.timegrid[ti:end] * 1000
@@ -310,5 +348,6 @@ class CustomConcatTimeOnly:
             
             # Increase the indices
             rt += temptime[-1]
+            print("File: " + file + " Time: " + str(rt * 1e3) + " ms", end="\n")
             ti += len(temptime)
 
