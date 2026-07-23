@@ -3,6 +3,7 @@
 from .concat import InconsistentRunWarning, Run
 from .derived import IonSpecies, cell_volumes, parse_ions, radial_integral
 from .energy import EnergyGrid
+from .labels import EN, HU, LANGUAGES, LabelSet, active
 from .io import (
     add_dream_to_path,
     describe,
@@ -12,6 +13,7 @@ from .io import (
     open_output,
 )
 from .moments import MomentumMoments, current
+from . import plotting
 from .schema import (
     DuplicatePathWarning,
     FIELDS,
@@ -22,16 +24,21 @@ from .schema import (
 )
 
 __all__ = [
+    "EN",
+    "HU",
+    "LANGUAGES",
     "DuplicatePathWarning",
     "EnergyGrid",
     "FIELDS",
     "InconsistentRunWarning",
     "IonSpecies",
+    "LabelSet",
     "MissingFieldError",
     "MomentumMoments",
     "Resolver",
     "Run",
     "TimeAxis",
+    "active",
     "add_dream_to_path",
     "cell_volumes",
     "current",
@@ -41,6 +48,7 @@ __all__ = [
     "newest_output",
     "open_output",
     "parse_ions",
+    "plotting",
     "radial_integral",
     "survey",
 ]
