@@ -31,3 +31,6 @@ plots/
 *.svg
 *.mp4
 *.gif
+
+# Test artifacts
+.pytest_cache/
