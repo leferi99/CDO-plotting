@@ -8,6 +8,8 @@ REFACTOR_PLAN.md
 .idea/
 .venv/
 venv/
+# if symlinked
+.venv
 
 # Python caches
 __pycache__/

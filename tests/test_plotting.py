@@ -76,6 +76,27 @@ def test_basic_2D_rejects_unknown_normalization():
                           normalization="bogus")
 
 
+def test_critical_field_ratio_2D_runs_and_saves(tmp_path):
+    r = np.linspace(0, 1, 6)
+    t = np.linspace(0, 2, 5)
+    E = np.outer(np.linspace(0.1, 0.3, 5), np.ones(6))
+    Eceff = np.full((5, 6), 0.2)  # ratio crosses one across the grid
+    fig = plotting.critical_field_ratio_2D(
+        E, Eceff, r, t, folder=str(tmp_path), savename="ratio")
+    assert (tmp_path / "ratio.png").exists()
+    assert not plt.fignum_exists(fig.number)
+
+
+def test_critical_field_ratio_2D_tolerates_nonfinite_ratio():
+    r = np.linspace(0, 1, 4)
+    t = np.linspace(0, 1, 3)
+    E = np.ones((3, 4))
+    Eceff = np.ones((3, 4))
+    Eceff[0, 0] = 0.0  # division by zero -> masked, not a crash
+    fig = plotting.critical_field_ratio_2D(E, Eceff, r, t)
+    assert fig is not None
+
+
 def test_index_array_returns_exact_index_for_on_grid_times():
     timegrid = np.array([0.0, 1.0, 2.0, 3.0, 4.0])
     assert list(plotting.index_array(timegrid, [1.0, 3.0, 4.0])) == [1, 3, 4]

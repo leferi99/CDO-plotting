@@ -23,6 +23,8 @@ QUANTITIES: dict[str, str] = {
     "electric_field": "Electric field [V/m]",
     "electron_distribution": r"Electron distribution [1/m$^3$]",
     "pitch_angle": "Pitch angle [degrees]",
+    "radiated_power": r"Radiated power density [W/m$^3$]",
+    "critical_field_ratio": "Field over effective critical field",
 }
 
 
