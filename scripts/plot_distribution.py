@@ -35,9 +35,10 @@ energy = EnergyGrid.from_run(run)
 if energy is None:
     raise SystemExit("this run has no runaway grid")
 
-# dn/(dE dr): transform the density moment from momentum to energy.
+# dn/(dE dr): transform the density moment from momentum to energy, dE in MeV
+# to match the kinetic-energy axis.
 density_spectrum_p = run.angle_average("runaway", "density")  # dn/dp per radius
-density_spectrum_E = energy.to_energy(density_spectrum_p)  # dn/dE per radius
+density_spectrum_E = energy.to_energy(density_spectrum_p, per="MeV")  # dn/dE per radius
 kinetic_energy_MeV = (energy.total_energy_eV - 510998.95) / 1e6
 
 print(run.report())
@@ -59,7 +60,7 @@ for c, i in zip(line_colors, frames):
     )
 plt.yscale("log")
 plt.xlabel(labels.KINETIC_ENERGY)
-plt.ylabel(r"$dn/(dE\,dr)$ [1/(J m)]")
+plt.ylabel(r"$dn/(dE\,dr)$ [1/(MeV m)]")
 plt.title(f"At r = {run.radialgrid[RADIAL_CELL]:.2f} m")
 plt.grid(True, which="both", linestyle="--", linewidth=0.3)
 plt.legend(fontsize="small")
