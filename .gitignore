@@ -1,13 +1,36 @@
-/.ipynb_checkpoints
-/.vs
-/.vscode
-/cli
+# Working documents
+REFACTOR_PLAN.md
+
+# Editors and environments
+.ipynb_checkpoints/
+.vs/
+.vscode/
+.idea/
+.venv/
+venv/
+
+# Python caches
+__pycache__/
+*.py[cod]
+
+# DREAM sources and CLI helpers checked out alongside
 /DREAM
-/__pycache__
+/cli
+
+# Data and scratch
+*.h5
+*.dump
 /git_ignore
 tests.py
-.idea/inspectionProfiles/profiles_settings.xml
-/.idea
-/FreeSans.otf
-/FK to Mathias
-*.h5
+
+# Generated figures
+plots/
+*.eps
+*.pdf
+*.png
+*.svg
+*.mp4
+*.gif
+
+# Test artifacts
+.pytest_cache/
