@@ -1,6 +1,6 @@
 # CDO-plotting
 
-Consistent plotting of [DREAM](https://github.com/chalmersplasmatheory/DREAM) output files across DREAM versions and run setups.
+Consistent plotting of [DREAM](https://github.com/chalmersplasmatheory/DREAM) output files across DREAM versions and run setups. CDO stands for Concatenated DREAM Output.
 
 A run is usually split across several HDF5 output files, and the datasets present and the paths they live at vary with the DREAM version and with how the run was invoked. The `cdo` package reads any of these into one concatenated series through a canonical-name layer, computes the moments and integrals natively, and plots them. Reading and the moments take no DREAM import, so the package works on output that the DREAM Python interface can no longer open.
 
