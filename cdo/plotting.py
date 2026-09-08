@@ -250,6 +250,64 @@ def basic_2D(
     return _finish(fig, folder, savename, dpi)
 
 
+def critical_field_ratio_2D(
+    E,
+    Eceff,
+    xgrid,
+    ygrid,
+    *,
+    figsize=FS_2D_MESH,
+    levels=(-3, -2, -1, 0, 1),
+    cmap="RdBu_r",
+    xlabel=None,
+    ylabel=None,
+    title=None,
+    cbarlabel=r"log$_{10}(E/E_{\rm c,eff})$",
+    yscale="linear",
+    ylim=(None, None),
+    folder=None,
+    savename=None,
+    dpi=150,
+):
+    """Where the field exceeds the effective critical field, over time and radius.
+
+    Plots ``log10(|E| / Eceff)`` as a few-level diverging contour. The ratio-one
+    boundary sits at zero: cells above it, drawn warm, are where runaway
+    generation can occur, and the ``E = Eceff`` contour is overdrawn in black.
+    ``levels`` are the log10 boundaries; the default spans three decades below the
+    threshold to one above. ``E`` and ``Eceff`` are ``(time, radius)`` and only
+    their ratio matters, so a shared sign convention on ``E`` is not needed.
+    """
+    E = np.asarray(E, dtype=float)
+    Eceff = np.asarray(Eceff, dtype=float)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        ratio = np.abs(E) / Eceff
+    logr = np.log10(ratio)
+    logr[~np.isfinite(logr)] = np.nan
+
+    levels = list(levels)
+    cmap = plt.colormaps[cmap] if isinstance(cmap, str) else cmap
+    norm = colors.BoundaryNorm(levels, ncolors=cmap.N, clip=False)
+
+    fig = plt.figure(figsize=figsize)
+    axes = plt.subplot(1, 1, 1)
+    plot = axes.contourf(xgrid, ygrid, logr, levels=levels, cmap=cmap,
+                         norm=norm, extend="both")
+    cbar = fig.colorbar(plot, ax=axes, ticks=levels)
+    if 0.0 in levels:
+        # The E = Eceff threshold: everything warm of this line can run away.
+        axes.contour(xgrid, ygrid, logr, levels=[0.0], colors="k", linewidths=2)
+
+    cbar.set_label(cbarlabel)
+    axes.set_ylim(ylim)
+    axes.set_xlabel(xlabel)
+    axes.set_ylabel(ylabel)
+    axes.set_title(title)
+    axes.set_yscale(yscale)
+
+    return _finish(fig, folder, savename, dpi)
+
+
 # --- distribution plots, carried over from CDO.py ------------------------
 
 
