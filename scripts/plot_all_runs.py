@@ -175,7 +175,7 @@ def figure_set(run, emit):
                 t_cold, run.radialgrid, t_ms,
                 normalization="log", logdiff=5,
                 xlabel=labels.RADIUS, ylabel=labels.TIME,
-                title=labels.quantity("electron_temperature"),
+                title=labels.quantity("temperature"),
                 cbarlabel=r"log$_{10}(T_{\rm cold}$/1eV)",
             )
 
@@ -273,6 +273,31 @@ def figure_set(run, emit):
             return fig
 
     attempt("energy_spectrum", energy_spectrum)
+
+    # Electron temperature radial profiles, colored by time.
+    def radial_electron_temperature_profiles():
+
+        end = t_ms[-1]
+        marks = np.arange(0, end + 1, max(end / 6, 1))
+        frames = np.clip(
+            plotting.index_array(t_ms, marks), 0, run.timegrid_length - 1)
+        colours = plt.cm.viridis(np.linspace(0.9, 0.0, len(frames)))
+        with plt.rc_context(plotting.LINE_RC):
+            fig = plt.figure(figsize=(8, 5))
+            for c, i in zip(colours, frames):
+                plt.plot(run.radialgrid, run.field("T_cold")[i, :],
+                         color=c, label=f"{t_ms[i]:.1f} ms")
+            plt.yscale("log")
+            plt.xlabel(labels.RADIUS)
+            plt.ylabel(labels.QUANTITIES["temperature_eV"])
+            plt.title(labels.QUANTITIES["temperature"])
+            plt.legend(fontsize="small")
+            return fig
+
+    attempt(
+        "radial_electron_temperature_profiles",
+        radial_electron_temperature_profiles
+    )
 
     return made
 
