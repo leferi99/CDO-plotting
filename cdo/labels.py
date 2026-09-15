@@ -16,7 +16,8 @@ KINETIC_ENERGY = "Kinetic energy [MeV]"
 #: Labels for named quantities, for reuse across figures.
 QUANTITIES: dict[str, str] = {
     "currents": "Currents [MA]",
-    "electron_temperature": "Electron temperature",
+    "temperature": "Electron temperature",
+    "temperature_eV": "Electron temperature [eV]",
     "ohmic_current_density": "Ohmic current density",
     "re_generation_rates": "RE generation rates",
     "runaway_density": r"Runaway density [1/m$^3$]",
