@@ -1,10 +1,10 @@
 """Batch figures for every DREAM run under an output root.
 
-Sweeps all `iter_dthmode24_*` run folders, builds a standard figure set for
-each, and draws cross-run overlays comparing the versions and variants. Meant
-for preliminary looks at runs still on the cluster, so every figure is guarded
-and a run that is missing a field or a grid is skipped for that figure rather
-than aborting the sweep.
+Sweeps all run folders matching `--glob` (default `iter_dthmode24_*`), builds
+a standard figure set for each, and draws cross-run overlays comparing the
+versions and variants. Meant for preliminary looks at runs still on the
+cluster, so every figure is guarded and a run that is missing a field or a grid
+is skipped for that figure rather than aborting the sweep.
 
 Each figure is written twice, as a PNG under `<out>/<tag>/png/` and as a PDF
 under `<out>/<tag>/pdf/`. Cross-run overlays go under `<out>/_comparison/`.
@@ -16,6 +16,7 @@ Usage:
     python scripts/plot_all_runs.py --only ar0p3pct      # substring filter
     python scripts/plot_all_runs.py --out /path/figures
     python scripts/plot_all_runs.py --runs-root /path/output
+    python scripts/plot_all_runs.py --runs-root /path/runs --glob 'tauw_*'
 
 Figures use the native reader in `cdo`, so no DREAM install is needed. This is a
 driver on top of `cdo`; it changes none of the package or the # %% scripts.
@@ -42,7 +43,7 @@ from cdo import labels, plotting
 from cdo.concat import InconsistentRunWarning
 
 DEFAULT_RUNS_ROOT = Path.home() / "nr_dream002/DREAM-runs/output"
-RUN_GLOB = "iter_dthmode24_*"
+DEFAULT_RUN_GLOB = "iter_dthmode24_*"
 MEC2_EV = 510998.95  # electron rest energy, eV
 
 
@@ -350,9 +351,9 @@ def comparison_figures(series, emit):
 # --- driver ---------------------------------------------------------------
 
 
-def discover(runs_root: Path, only: str | None):
+def discover(runs_root: Path, only: str | None, run_glob: str = DEFAULT_RUN_GLOB):
     runs = []
-    for folder in sorted(runs_root.glob(RUN_GLOB)):
+    for folder in sorted(runs_root.glob(run_glob)):
         if not folder.is_dir():
             continue
         if only and only not in folder.name:
@@ -432,6 +433,8 @@ def main(argv=None):
     parser.add_argument("--out", type=Path,
                         default=Path(os.environ.get(
                             "CDO_FIGURE_ROOT", Path(__file__).resolve().parent.parent / "plots")))
+    parser.add_argument("--glob", default=os.environ.get("CDO_RUN_GLOB", DEFAULT_RUN_GLOB),
+                        help="run folder pattern under the runs root (default %(default)s)")
     parser.add_argument("--only", default=None,
                         help="only runs whose folder name contains this substring")
     parser.add_argument("--dpi", type=int, default=150)
@@ -443,7 +446,7 @@ def main(argv=None):
 
     plotting.use_base_style(latex=False, sansserif=True)
 
-    runs = discover(args.runs_root, args.only)
+    runs = discover(args.runs_root, args.only, args.glob)
     if not runs:
         raise SystemExit(f"no runs matching under {args.runs_root}")
     print(f"{len(runs)} run(s) under {args.runs_root}")

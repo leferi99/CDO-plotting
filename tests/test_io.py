@@ -8,6 +8,7 @@ NAMES = [
     "output_0000.h5",
     "output_init_0.h5",
     "output_init_1.h5",
+    "output_0001.inprogress.h5",
     "settings_0000.h5",
     "ITER_DThmode24_00400_LUKE.h5",
     "manifest.json",
@@ -30,6 +31,18 @@ def test_initialisation_files_can_be_asked_for(run_folder):
         "output_0000.h5",
         "output_init_0.h5",
         "output_init_1.h5",
+    ]
+
+
+def test_uncommitted_legs_are_excluded_by_default(run_folder):
+    names = [p.name for p in find_outputs(run_folder, init=True)]
+    assert "output_0001.inprogress.h5" not in names
+
+
+def test_uncommitted_legs_can_be_asked_for(run_folder):
+    assert [p.name for p in find_outputs(run_folder, inprogress=True)] == [
+        "output_0000.h5",
+        "output_0001.inprogress.h5",
     ]
 
 

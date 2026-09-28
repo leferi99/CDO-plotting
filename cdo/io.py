@@ -25,6 +25,13 @@ OUTPUT_PATTERN = "output*.h5"
 #: so they are excluded unless asked for.
 INIT_PREFIX = "output_init"
 
+#: Marker in the name of a leg that has not been committed yet, such as
+#: ``output_0038.inprogress.h5``. The resume driver writes each leg under this
+#: name and renames it once the leg completes, so a leftover one is a leg that
+#: failed or is still running. It may be partial or hold only its first step,
+#: so it is excluded unless asked for.
+INPROGRESS_MARKER = ".inprogress."
+
 _NUMBER = re.compile(r"\d+")
 
 
@@ -65,6 +72,7 @@ def find_outputs(
     pattern: str | None = None,
     prefix: str | None = None,
     init: bool = False,
+    inprogress: bool = False,
 ) -> list[Path]:
     """List a run's output files in time order.
 
@@ -75,6 +83,9 @@ def find_outputs(
     current-matching phase, a couple of time steps with the temperature and wall
     circuit not evolved, and concatenating them with the production files would
     misreport the start of the simulation.
+
+    Uncommitted legs (``*.inprogress.h5``) are excluded unless ``inprogress``
+    is true.
 
     ``prefix`` restricts the match further, for use when one folder holds
     several runs.
@@ -88,6 +99,7 @@ def find_outputs(
         for p in folder.glob(pattern or OUTPUT_PATTERN)
         if not p.name.startswith("settings")
         and (init or not p.name.startswith(INIT_PREFIX))
+        and (inprogress or INPROGRESS_MARKER not in p.name)
         and (prefix is None or p.name.startswith(prefix))
     ]
     return sorted(matches, key=natural_key)
