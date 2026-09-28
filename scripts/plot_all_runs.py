@@ -78,6 +78,19 @@ def _radial_mean(field):
     return np.nanmean(field, axis=1)
 
 
+def _log_frames(t_ms, count=9, decades=3):
+    """Time indices spaced logarithmically up to the end, plus the first step.
+
+    The earliest mark sits `decades` decades below the end time. Evenly spaced
+    marks leave the first few percent of the run without a single line, and
+    that is where a thermal collapse happens.
+    """
+    end = t_ms[-1]
+    marks = np.geomspace(end / 10**decades, end, count)
+    frames = np.clip(plotting.index_array(t_ms, marks), 0, len(t_ms) - 1)
+    return np.unique(np.concatenate(([0], frames)))
+
+
 def _kinetic_current(run):
     """Runaway plus hot-tail current, in amperes, or None if neither exists."""
     kinetic = run.runaway_current
@@ -275,19 +288,16 @@ def figure_set(run, emit):
 
     attempt("energy_spectrum", energy_spectrum)
 
-    # Electron temperature radial profiles, colored by time.
+    # Electron temperature radial profiles, colored by time. The times are
+    # log-spaced so the early temperature drop gets its own lines.
     def radial_electron_temperature_profiles():
-
-        end = t_ms[-1]
-        marks = np.arange(0, end + 1, max(end / 6, 1))
-        frames = np.clip(
-            plotting.index_array(t_ms, marks), 0, run.timegrid_length - 1)
+        frames = _log_frames(t_ms)
         colours = plt.cm.viridis(np.linspace(0.9, 0.0, len(frames)))
         with plt.rc_context(plotting.LINE_RC):
             fig = plt.figure(figsize=(8, 5))
             for c, i in zip(colours, frames):
                 plt.plot(run.radialgrid, run.field("T_cold")[i, :],
-                         color=c, label=f"{t_ms[i]:.1f} ms")
+                         color=c, label=f"{t_ms[i]:.3g} ms")
             plt.yscale("log")
             plt.xlabel(labels.RADIUS)
             plt.ylabel(labels.QUANTITIES["temperature_eV"])
