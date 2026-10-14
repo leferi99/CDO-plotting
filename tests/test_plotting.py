@@ -60,6 +60,25 @@ def test_basic_2D_runs_for_each_normalization(normalization):
     assert fig is not None
 
 
+@pytest.mark.parametrize("normalization", ["lin", "log", "symlog"])
+def test_basic_2D_mesh_runs_for_each_normalization(normalization):
+    x = np.linspace(0, 1, 6)
+    y = np.geomspace(1e-3, 2, 5)
+    data = np.abs(np.outer(y, x)) + 1.0
+    if normalization == "symlog":
+        data = np.outer(y - 1, x - 0.5)
+    fig = plotting.basic_2D(data, x, y, normalization=normalization, mesh=True,
+                            linthresh=1e-3, yscale="log")
+    assert fig is not None
+
+
+def test_symlog_ticks_are_symmetric_and_capped():
+    ticks = plotting.symlog_ticks(1e3, 1e20, per_sign=4)
+    assert 0.0 in ticks
+    assert np.allclose(ticks, -ticks[::-1])
+    assert len(ticks) <= 2 * 4 + 1
+
+
 def test_basic_2D_does_not_mutate_input():
     x = np.linspace(0, 1, 4)
     y = np.linspace(0, 1, 3)
@@ -128,3 +147,19 @@ def test_indices_every_terminates_on_fine_step():
     timegrid = np.linspace(0.0, 1.0, 5)
     frames = plotting.indices_every(timegrid, step=1e-6)
     assert frames[-1] == len(timegrid) - 1
+
+
+def test_time_marks_long_run_uses_the_ms_ladder_and_closes_at_the_end():
+    timegrid = np.arange(0.2, 70.01, 0.2)
+    frames = plotting.time_marks(timegrid)
+    assert [round(timegrid[i], 1) for i in frames] == [0.2, 1.0, 10.0, 25.0, 50.0, 70.0]
+    sparse = plotting.time_marks(timegrid, sparse=True)
+    assert [round(timegrid[i], 1) for i in sparse] == [0.2, 1.0, 10.0, 50.0, 70.0]
+
+
+def test_time_marks_short_run_resolves_sub_millisecond_steps():
+    timegrid = np.linspace(0.001, 4.0, 400)
+    frames = plotting.time_marks(timegrid)
+    assert frames[0] == 0
+    assert frames[-1] == len(timegrid) - 1
+    assert len(frames) == len(set(frames)) == 7

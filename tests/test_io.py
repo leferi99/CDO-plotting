@@ -8,6 +8,7 @@ NAMES = [
     "output_0000.h5",
     "output_init_0.h5",
     "output_init_1.h5",
+    "output_0001.inprogress.h5",
     "settings_0000.h5",
     "ITER_DThmode24_00400_LUKE.h5",
     "manifest.json",
@@ -38,6 +39,11 @@ def test_settings_and_unrelated_files_are_never_returned(run_folder):
     assert not any(n.startswith("settings") for n in names)
     assert "ITER_DThmode24_00400_LUKE.h5" not in names
     assert "manifest.json" not in names
+
+
+def test_uncommitted_legs_are_never_returned(run_folder):
+    names = [p.name for p in find_outputs(run_folder, init=True)]
+    assert "output_0001.inprogress.h5" not in names
 
 
 def test_numeric_ordering_beats_lexicographic(tmp_path):

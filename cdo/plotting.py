@@ -186,6 +186,7 @@ def basic_2D(
     cbarlabel=None,
     yscale="linear",
     ylim=(None, None),
+    mesh=False,
     folder=None,
     savename=None,
     dpi=150,
@@ -196,6 +197,11 @@ def basic_2D(
     range spans ``logdiff`` decades below the maximum. For ``symlog`` the range
     is symmetric about zero with a linear band of half-width ``linthresh``. Data
     is not modified in place: non-finite entries are zeroed on a copy.
+
+    ``mesh`` draws a ``pcolormesh`` with nearest shading instead of contours,
+    so each cell keeps its own value on a non-uniform grid. ``levels`` is then
+    ignored. Cells below the log floor, zero and negative ones included, are
+    left transparent over the black axes background.
     """
     data = np.array(data, dtype=float)
     data[~np.isfinite(data)] = 0.0
@@ -219,23 +225,39 @@ def basic_2D(
             logdiff = max(math.log10(datamax) - 1, 10)
         logmax = math.ceil(math.log10(datamax))
         logmin = logmax - logdiff
-        contour_levels = np.logspace(logmin, logmax, levels)
         norm = colors.LogNorm(vmin=10**logmin, vmax=datamax)
-        plot = axes.contourf(xgrid, ygrid, data, levels=contour_levels, norm=norm, cmap=cmap)
+        if mesh:
+            plot = axes.pcolormesh(xgrid, ygrid, np.ma.masked_less(data, 10**logmin),
+                                   norm=norm, cmap=cmap, shading="nearest")
+        else:
+            contour_levels = np.logspace(logmin, logmax, levels)
+            plot = axes.contourf(xgrid, ygrid, data, levels=contour_levels, norm=norm,
+                                 cmap=cmap)
         decade_ticks = np.power(10.0, np.arange(math.ceil(logmin), logmax + 1))
         cbar = fig.colorbar(plot, ax=axes, ticks=decade_ticks)
         cbar.formatter = ticker.LogFormatterExponent(base=10)
         cbar.update_ticks()
     elif normalization == "lin":
-        contour_levels = np.linspace(datamin, datamax, levels)
-        plot = axes.contourf(xgrid, ygrid, data, levels=contour_levels, cmap=cmap,
-                             vmin=datamin, vmax=datamax)
+        if mesh:
+            plot = axes.pcolormesh(xgrid, ygrid, data, cmap=cmap, vmin=datamin,
+                                   vmax=datamax, shading="nearest")
+        else:
+            contour_levels = np.linspace(datamin, datamax, levels)
+            plot = axes.contourf(xgrid, ygrid, data, levels=contour_levels, cmap=cmap,
+                                 vmin=datamin, vmax=datamax)
         cbar = fig.colorbar(plot, ax=axes)
     elif normalization == "symlog":
-        norm = colors.SymLogNorm(linthresh=linthresh)
-        plot = axes.contourf(xgrid, ygrid, data, levels=levels, norm=norm,
-                             cmap=plt.colormaps["RdBu"], vmin=-datamax, vmax=datamax)
-        cbar = fig.colorbar(plot, ax=axes)
+        if mesh:
+            bound = max(abs(datamax), abs(datamin))
+            norm = colors.SymLogNorm(linthresh=linthresh, vmin=-bound, vmax=bound)
+            plot = axes.pcolormesh(xgrid, ygrid, data, norm=norm,
+                                   cmap=plt.colormaps["RdBu_r"], shading="nearest")
+            cbar = fig.colorbar(plot, ax=axes, ticks=symlog_ticks(linthresh, bound))
+        else:
+            norm = colors.SymLogNorm(linthresh=linthresh)
+            plot = axes.contourf(xgrid, ygrid, data, levels=levels, norm=norm,
+                                 cmap=plt.colormaps["RdBu"], vmin=-datamax, vmax=datamax)
+            cbar = fig.colorbar(plot, ax=axes)
     else:
         raise ValueError(f"unknown normalization '{normalization}'")
 
@@ -248,6 +270,19 @@ def basic_2D(
     axes.set_yscale(yscale)
 
     return _finish(fig, folder, savename, dpi)
+
+
+def symlog_ticks(linthresh, bound, per_sign=4):
+    """Decade ticks for a symmetric log axis, at most ``per_sign`` per sign.
+
+    Spaces the decades between ``linthresh`` and ``bound`` evenly, so a range of
+    many decades keeps legible labels, and adds zero.
+    """
+    lo = math.ceil(math.log10(linthresh))
+    hi = math.floor(math.log10(bound))
+    step = max(1, math.ceil((hi - lo + 1) / per_sign))
+    decades = np.power(10.0, np.arange(hi, lo - 1, -step))
+    return np.concatenate([-decades, [0.0], decades[::-1]])
 
 
 def critical_field_ratio_2D(
@@ -364,6 +399,68 @@ def distribution_momentum_2D(
     return _finish(fig, folder, savename, dpi)
 
 
+def distribution_momentum_panels(
+    run,
+    grid="runaway",
+    *,
+    timesteps,
+    radial_cell=0,
+    decades=12,
+    ncols=None,
+    panel_size=(4.2, 3.2),
+    cbarlabel=r"Electron distribution [1/m$^3$]",
+    suptitle=None,
+    folder=None,
+    savename=None,
+    dpi=150,
+):
+    """Momentum-pitch colour-meshes of one radial cell at several time steps.
+
+    One panel per entry of ``timesteps``, laid out in a grid with shared axes
+    and one shared logarithmic colour scale, so the panels read as a time
+    sequence. The scale tops out at the largest value over the chosen steps and
+    spans ``decades`` below it. Cells below that floor, negative ones included,
+    show as the black background.
+    """
+    prefix = "hot" if grid == "hottail" else "re"
+    f = run.field("f_hot" if grid == "hottail" else "f_re")
+    p_edges = run.reference.read(f"{prefix}_p_edges")
+    xi_deg_edges = _pitch_degrees_edges(run, grid)
+    t_ms = run.timegrid_ms
+
+    frames = [f[i, radial_cell] for i in timesteps]
+    vmax = max(float(np.nanmax(d)) for d in frames)
+    if not vmax > 0:
+        return None
+    norm = colors.LogNorm(vmin=vmax * 10.0**-decades, vmax=vmax)
+
+    n = len(frames)
+    ncols = ncols or min(n, 4)
+    nrows = math.ceil(n / ncols)
+    fig, axes = plt.subplots(
+        nrows, ncols, sharex=True, sharey=True, squeeze=False,
+        figsize=(panel_size[0] * ncols + 1.2, panel_size[1] * nrows + 0.6),
+    )
+    for ax, i, data in zip(axes.flat, timesteps, frames):
+        mesh = ax.pcolormesh(p_edges, xi_deg_edges,
+                             np.ma.masked_less(data, norm.vmin), norm=norm)
+        ax.set_facecolor("black")
+        ax.set_title(f"t = {t_ms[i]:.3g} ms", fontsize="small")
+    for ax in axes.flat[n:]:
+        ax.set_visible(False)
+    for ax in axes[-1]:
+        ax.set_xlabel(r"$p$ [$m_e c$]", fontsize="small")
+    for ax in axes[:, 0]:
+        ax.set_ylabel("Pitch angle [deg]", fontsize="small")
+    cbar = fig.colorbar(mesh, ax=axes, shrink=0.9)
+    cbar.set_label(cbarlabel)
+    if suptitle is None:
+        suptitle = f"{grid} grid, r = {run.radialgrid[radial_cell]:.2f} m"
+    fig.suptitle(suptitle)
+
+    return _finish(fig, folder, savename, dpi)
+
+
 def angle_averaged_momentum_1D(
     run,
     grid="runaway",
@@ -443,3 +540,33 @@ def indices_every(timegrid, step, start=None):
         frames.append(i)
         target = timegrid[i] + step
     return frames
+
+
+#: Snapshot times in ms for runs of at least ``LONG_RUN_MS``.
+TIME_MARKS_LONG = (0, 1, 10, 25, 50, 75, 100, 150, 200, 250, 300, 400, 500)
+#: Snapshot times in ms for shorter runs, which resolve the thermal quench.
+TIME_MARKS_SHORT = (0, 0.1, 0.25, 0.5, 1, 2, 4, 6, 8, 10, 15)
+#: Marks left out of line plots, where too many curves crowd the axes.
+TIME_MARKS_SPARSE_SKIP = (25, 75, 0.25, 6)
+LONG_RUN_MS = 20.0
+
+
+def time_marks(timegrid_ms, sparse=False):
+    """Time-step indices of the standard snapshot times within one run.
+
+    Picks the marks of :data:`TIME_MARKS_LONG` or :data:`TIME_MARKS_SHORT` by
+    run length, keeps those inside the run, and closes with the final step when
+    it lies clearly past the last mark. ``sparse`` drops the marks in
+    :data:`TIME_MARKS_SPARSE_SKIP`, for line plots. The 0 ms mark resolves to
+    the first saved step, since the initial state is not part of a run.
+    """
+    t = np.asarray(timegrid_ms)
+    end = t[-1]
+    marks = TIME_MARKS_LONG if end >= LONG_RUN_MS else TIME_MARKS_SHORT
+    marks = [m for m in marks if m <= end * 1.001]
+    if sparse:
+        marks = [m for m in marks if m not in TIME_MARKS_SPARSE_SKIP]
+    if end > marks[-1] * 1.05:
+        marks.append(end)
+    steps = np.clip(index_array(t, marks), 0, len(t) - 1)
+    return list(dict.fromkeys(int(i) for i in steps))
