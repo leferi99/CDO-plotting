@@ -183,9 +183,8 @@ def figure_set(run, emit):
 
     attempt("generation_rates", generation_rates)
 
-    # Each generation rate over time and radius, on linear and log time axes.
-    # The log axis resolves the thermal quench in the first millisecond.
-    def rate_map(label, rate, yscale):
+    # Each generation rate over time and radius.
+    def rate_map(label, rate):
         def build():
             peak = float(np.nanmax(np.abs(rate)))
             signed = np.nanmin(rate) < -1e-3 * peak
@@ -196,7 +195,7 @@ def figure_set(run, emit):
                     logdiff=8, linthresh=peak * 1e-6,
                     datamin=-peak if signed else None,
                     datamax=peak if signed else None,
-                    xlabel=labels.RADIUS, ylabel=labels.TIME, yscale=yscale,
+                    xlabel=labels.RADIUS, ylabel=labels.TIME,
                     ylim=(t_ms[0], t_ms[-1]),
                     title=label,
                     cbarlabel=(r"Rate [1/(s m$^3$)]" if signed
@@ -205,8 +204,7 @@ def figure_set(run, emit):
         return build
 
     for key, rate in rates.items():
-        attempt(f"rate_map_{key}", rate_map(labels.RATES[key], rate, "linear"))
-        attempt(f"rate_map_{key}_logtime", rate_map(labels.RATES[key], rate, "log"))
+        attempt(f"rate_map_{key}", rate_map(labels.RATES[key], rate))
 
     # Electron temperature over time and radius.
     def temperature():

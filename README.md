@@ -53,7 +53,7 @@ CDO_DATA_FOLDER=/path/to/run/output CDO_OUTPUT_FOLDER=/path/to/figures \
 Leave `CDO_OUTPUT_FOLDER` unset to display the figures instead of saving them. `plot_main.py` covers currents, generation rates, temperature, current density, and the runaway distribution. `plot_distribution.py` plots the runaway energy spectrum. `plot_drag_force.py` draws the drag-force schematic from `Chandrasekar.csv`.
 
 `plot_all_runs.py` saves the full figure set of every run in the campaigns listed in its `GROUPS`, with cross-run current overlays per group and an `index.md`.
-Besides the figures above, it draws r-t colour-meshes of each runaway generation rate on linear and log time axes, the volume-averaged rates over time, and momentum-pitch distributions at snapshot times:
+Besides the figures above, it draws r-t colour-meshes of each runaway generation rate, the volume-averaged rates over time, and momentum-pitch distributions at snapshot times:
 
 ```bash
 python scripts/plot_all_runs.py                     # all groups -> ./plots
