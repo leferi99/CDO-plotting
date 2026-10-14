@@ -55,6 +55,16 @@ GROUPS = [
     ("demo_jorek", DEMO_JOREK_RUNS, ("tauw_*",), ""),
 ]
 
+#: JOREK time of the DREAM start in the JOREK benchmark: the time of
+#: CQ_prof.dat, `T0_JOREK` in DEMO_JOREK_2026/run_demo_cq.py.
+JOREK_T0_MS = 5.762537968682188
+#: JOREK plasma current values known without a time trace, as
+#: (JOREK time [ms], I_p [MA]): the eqdsk equilibrium, the CQ_prof.dat state
+#: DREAM starts from, and the 2D RE plateau (I_p = I_RE) from the provider's
+#: slides. See DEMO_JOREK_2026/README.md.
+JOREK_IP_POINTS = [(0.0, 18.79), (JOREK_T0_MS, 18.74), (267.0, 16.1)]
+JOREK_PLATEAU_MA = 16.1
+
 #: Runaway generation channels: canonical field, file-name key, legend label.
 #: With a kinetic runaway grid, `runawayRate` is the flux from the hot-tail grid
 #: into the runaway grid, and the Dreicer and avalanche rates are fluid-model
@@ -403,40 +413,65 @@ def figure_set(run, emit):
 # --- cross-run comparison -------------------------------------------------
 
 
-def comparison_figures(series, emit):
-    """Overlay the plasma and runaway currents of every run on shared axes."""
+def load_jorek_trace(path):
+    """A JOREK I_p trace from a two-column text file, JOREK time [ms] and I_p [MA]."""
+    data = np.loadtxt(path, delimiter="," if str(path).endswith(".csv") else None,
+                      comments="#")
+    return data[:, 0], data[:, 1]
+
+
+def comparison_figures(series, emit, jorek=False, jorek_trace=None):
+    """Overlay the plasma and runaway currents of every run on shared axes.
+
+    With ``jorek`` the time axis is JOREK time, DREAM time shifted by
+    :data:`JOREK_T0_MS`, and the known JOREK current values are overdrawn in
+    black: :data:`JOREK_IP_POINTS` on the plasma current, the RE plateau on the
+    runaway current, and ``jorek_trace`` (times, I_p in MA) when given.
+    """
     if not series:
         return []
     made = []
     colours = plt.cm.turbo(np.linspace(0.05, 0.95, len(series)))
+    offset = JOREK_T0_MS if jorek else 0.0
 
-    def overlay(key, ylabel, absval=False):
+    def overlay(key, ylabel, absval=False, reference=()):
         with plt.rc_context(plotting.LINE_RC):
-            fig = plt.figure(figsize=(8, 5))
+            fig = plt.figure(figsize=(11, 5))
             drawn = False
             for c, s in zip(colours, series):
                 y = s.get(key)
                 if y is None:
                     continue
                 y = np.abs(y) if absval else y
-                plt.plot(s["t_ms"], y / 1e6, color=c, label=s["tag"])
+                plt.plot(s["t_ms"] + offset, y / 1e6, color=c, label=s["tag"])
                 drawn = True
             if not drawn:
                 plt.close(fig)
                 return None
+            if jorek and key == "Ip" and jorek_trace is not None:
+                plt.plot(*jorek_trace, color="k", lw=2.5, label="JOREK")
+            if reference:
+                t_ref, i_ref = zip(*reference)
+                plt.plot(t_ref, i_ref, ls="none", marker="o", ms=8, mfc="none",
+                         mec="k", mew=2, zorder=5,
+                         label="JOREK" if jorek_trace is None or key != "Ip" else None)
             axes = plt.gca()
-            axes.set_xlabel(labels.TIME)
+            axes.set_xlabel("JOREK time [ms]" if jorek else labels.TIME)
             axes.set_ylabel(ylabel)
             axes.set_xlim(0, None)
-            axes.legend(fontsize="x-small", ncol=1, loc="best")
+            # Outside the axes, so no curve or reference marker is hidden.
+            axes.legend(fontsize="x-small", ncol=1, loc="upper left",
+                        bbox_to_anchor=(1.01, 1.0))
             return fig
 
-    fig = overlay("Ip", r"Plasma current $I_{\rm p}$ [MA]")
+    fig = overlay("Ip", r"Plasma current $I_{\rm p}$ [MA]",
+                  reference=JOREK_IP_POINTS if jorek else ())
     if fig is not None:
         emit(fig, "compare_plasma_current")
         made.append("compare_plasma_current")
 
-    fig = overlay("Ire", r"Runaway current $I_{\rm RE}$ [MA]", absval=True)
+    fig = overlay("Ire", r"Runaway current $I_{\rm RE}$ [MA]", absval=True,
+                  reference=[(267.0, JOREK_PLATEAU_MA)] if jorek else ())
     if fig is not None:
         emit(fig, "compare_runaway_current")
         made.append("compare_runaway_current")
@@ -554,7 +589,9 @@ def sweep_group(group, runs_root, globs, prefix, args):
     compare_made = []
     if not args.no_compare and series:
         emit = Emitter(out_dir / "_comparison", dpi=args.dpi)
-        compare_made = comparison_figures(series, emit)
+        jorek = group == "demo_jorek"
+        trace = load_jorek_trace(args.jorek_csv) if jorek and args.jorek_csv else None
+        compare_made = comparison_figures(series, emit, jorek=jorek, jorek_trace=trace)
         if compare_made:
             print(f"   comparison: {', '.join(compare_made)}")
     return group, runs_root, records, compare_made
@@ -573,6 +610,9 @@ def main(argv=None):
                             "CDO_FIGURE_ROOT", Path(__file__).resolve().parent.parent / "plots")))
     parser.add_argument("--only", default=None,
                         help="only runs whose folder name contains this substring")
+    parser.add_argument("--jorek-csv", type=Path, default=None,
+                        help="JOREK I_p trace for the demo_jorek overlay: "
+                             "columns JOREK time [ms], I_p [MA]")
     parser.add_argument("--dpi", type=int, default=150)
     parser.add_argument("--no-per-run", action="store_true",
                         help="skip per-run figures, draw only the comparisons")
@@ -594,8 +634,10 @@ def main(argv=None):
     if not any(records for _, _, records, _ in sections):
         raise SystemExit("no runs found")
 
-    write_index(sections, args.out)
     print(f"\nfigures under {args.out}  (per run: png/ and pdf/)")
+    if args.no_per_run or args.group or args.only:
+        return  # a partial sweep would overwrite the full index
+    write_index(sections, args.out)
     print(f"index: {args.out / 'index.md'}")
 
 
