@@ -365,7 +365,7 @@ def figure_set(run, emit):
     def radial_electron_temperature_profiles():
         colours = plt.cm.viridis(np.linspace(0.9, 0.0, len(line_frames)))
         with plt.rc_context(plotting.LINE_RC):
-            fig = plt.figure(figsize=(8, 5))
+            fig = plt.figure(figsize=(10, 5))
             for c, i in zip(colours, line_frames):
                 plt.plot(run.radialgrid, run.field("T_cold")[i, :],
                          color=c, label=plotting.time_label(t_ms, i))
@@ -373,7 +373,8 @@ def figure_set(run, emit):
             plt.xlabel(labels.RADIUS)
             plt.ylabel(labels.QUANTITIES["temperature_eV"])
             plt.title(labels.QUANTITIES["temperature"])
-            plt.legend(fontsize="small")
+            # Outside the axes, so no profile is hidden.
+            plt.legend(fontsize="small", loc="upper left", bbox_to_anchor=(1.01, 1.0))
             return fig
 
     attempt(
