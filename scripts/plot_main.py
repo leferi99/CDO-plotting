@@ -37,11 +37,6 @@ endtime = f"{run.timegrid_ms[-1]:.0f}ms"
 folder = os.path.join(OUTPUT_FOLDER, endtime) if SAVE else None
 
 
-def radial_mean(field):
-    """Radial mean of a (time, radius) field, ignoring NaN stretches."""
-    return np.nanmean(field, axis=1)
-
-
 # %%
 # Currents over time, in megaamperes.
 import matplotlib.pyplot as plt
@@ -78,27 +73,23 @@ with plt.rc_context(plotting.LINE_RC):
 
 
 # %%
-# Runaway generation rates, radially averaged.
-runaway_rate = run.field("runawayRate")
-if runaway_rate is not None:
-    flux = cdo.derived.flux_to_re(
-        runaway_rate, run.field("n_re"), run.field("GammaAva"),
-        run.field("gammaTritium"), run.field("gammaCompton"),
-    )
+# Runaway generation rates, volume-averaged, one curve per channel. With a
+# kinetic runaway grid the total is the hot-tail grid flux alone, and the
+# Dreicer and avalanche curves are fluid-model estimates outside it.
+rates = cdo.derived.generation_rates(run)
+if rates:
+    curves = [cdo.derived.volume_average(r, run.cell_volumes) for r in rates.values()]
+    peak = max(np.nanmax(np.abs(c)) for c in curves)
     with plt.rc_context(plotting.LINE_RC):
         plotting.basic_1D(
-            [
-                radial_mean(run.field("GammaAva") * run.field("n_re")),
-                radial_mean(run.field("gammaCompton")),
-                radial_mean(run.field("gammaTritium")),
-                radial_mean(flux),
-            ],
-            run.timegrid_ms,
-            labels=[r"$\gamma_{\rm ava}$", r"$\gamma_{\rm C}$",
-                    r"$\gamma_{\rm T}$", r"$\gamma_{\rm D+ht}$"],
-            yscale="symlog", ylinthresh=1.0,
-            xlabel=labels.TIME, ylabel=labels.quantity("re_generation_rates"),
-            legendloc="upper left",
+            curves, run.timegrid_ms,
+            labels=[labels.RATES[key] for key in rates],
+            yscale="symlog", ylinthresh=peak * 1e-8,
+            yticks=plotting.symlog_ticks(peak * 1e-8, peak),
+            xlabel=labels.TIME,
+            ylabel=r"Volume-averaged rate [1/(s m$^3$)]",
+            title=labels.quantity("re_generation_rates"),
+            legendloc="best", legendfontsize="x-small",
             folder=folder, savename="generation_rates" if SAVE else None,
         )
 

@@ -101,9 +101,56 @@ def flux_to_re(
     gammaTritium: np.ndarray,
     gammaCompton: np.ndarray,
 ) -> np.ndarray:
-    """Net non-avalanche runaway source.
+    """Net non-avalanche runaway source, valid for fluid runaway runs only.
 
     The total rate less the avalanche, tritium and Compton contributions, as in
-    the retired code. Leaves the Dreicer plus hottail flux.
+    the retired code. Leaves the Dreicer plus hottail flux. With a kinetic
+    runaway grid, ``runawayRate`` holds only the flux from the hot-tail grid and
+    carries no avalanche term, so subtracting ``n_re * GammaAva`` gives a wrong
+    result there. Use :func:`generation_rates` for the channels in either mode.
     """
     return runawayRate - n_re * GammaAva - gammaTritium - gammaCompton
+
+
+#: Runaway generation channels, as (key, canonical field). ``avalanche`` is
+#: ``GammaAva * n_re``. With a kinetic runaway grid, ``runawayRate`` is the flux
+#: from the hot-tail grid into the runaway grid, and the Dreicer and avalanche
+#: rates are fluid-model estimates that do not enter it, since the avalanche
+#: then acts on ``f_re`` directly.
+RATE_CHANNELS = (
+    ("total", "runawayRate"),
+    ("hottail_flux", "gammaHottail"),
+    ("dreicer", "gammaDreicer"),
+    ("avalanche", None),
+    ("compton", "gammaCompton"),
+    ("tritium", "gammaTritium"),
+)
+
+
+def generation_rates(run, floor: float = 1e-12) -> dict[str, np.ndarray]:
+    """Runaway generation rates of a run in 1/(s m^3), over (time, radius).
+
+    Keyed as in :data:`RATE_CHANNELS`. Channels the run does not carry are left
+    out, and so are channels whose peak magnitude stays below ``floor`` times
+    the strongest one, such as tritium and Compton with those sources off.
+    """
+    rates = {}
+    for key, name in RATE_CHANNELS:
+        if name is None:
+            gamma, n_re = run.field("GammaAva"), run.field("n_re")
+            value = None if gamma is None or n_re is None else gamma * n_re
+        else:
+            value = run.field(name)
+        if value is not None:
+            rates[key] = value
+    if not rates:
+        return rates
+    peaks = {key: np.nanmax(np.abs(value)) for key, value in rates.items()}
+    strongest = max(peaks.values())
+    return {key: value for key, value in rates.items()
+            if peaks[key] > floor * strongest}
+
+
+def volume_average(field: np.ndarray, volumes: np.ndarray) -> np.ndarray:
+    """Volume-weighted mean over radius, the last axis, ignoring NaN cells."""
+    return np.nansum(field * volumes, axis=-1) / np.sum(volumes)

@@ -29,6 +29,17 @@ QUANTITIES: dict[str, str] = {
 }
 
 
+#: Legend labels for the generation channels of `derived.RATE_CHANNELS`.
+RATES: dict[str, str] = {
+    "total": r"$\gamma_{\rm tot}$",
+    "hottail_flux": r"$\gamma_{\rm hot}$",
+    "dreicer": r"$\gamma_{\rm D}$",
+    "avalanche": r"$\Gamma_{\rm ava} n_{\rm RE}$",
+    "compton": r"$\gamma_{\rm C}$",
+    "tritium": r"$\gamma_{\rm T}$",
+}
+
+
 def quantity(key: str) -> str:
     """Label for a named quantity, or the key itself if none is registered."""
     return QUANTITIES.get(key, key)

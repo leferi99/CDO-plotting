@@ -7,9 +7,21 @@ from cdo.derived import (
     IonSpecies,
     cell_volumes,
     flux_to_re,
+    generation_rates,
     parse_ions,
     radial_integral,
+    volume_average,
 )
+
+
+class FakeRun:
+    """Serves named (time, radius) fields, None for the rest."""
+
+    def __init__(self, **fields):
+        self.fields = fields
+
+    def field(self, name):
+        return self.fields.get(name)
 
 
 def test_cell_volume_is_vpvol_dr_r0():
@@ -76,3 +88,24 @@ def test_flux_to_re_subtracts_known_sources():
     assert flux_to_re(rate, n_re, ava, trit, compton) == pytest.approx(
         np.full(shape, 6.0)
     )
+
+
+def test_generation_rates_builds_avalanche_and_drops_negligible_channels():
+    shape = (2, 3)
+    run = FakeRun(
+        runawayRate=np.full(shape, 1e18),
+        gammaHottail=np.full(shape, 1e18),
+        gammaDreicer=np.full(shape, 1e-29),
+        gammaTritium=np.zeros(shape),
+        GammaAva=np.full(shape, 100.0),
+        n_re=np.full(shape, 1e15),
+    )
+    rates = generation_rates(run)
+    assert list(rates) == ["total", "hottail_flux", "avalanche"]
+    assert rates["avalanche"] == pytest.approx(np.full(shape, 1e17))
+
+
+def test_volume_average_weights_by_cell_volume():
+    field = np.array([[1.0, 3.0], [2.0, np.nan]])
+    volumes = np.array([1.0, 3.0])
+    assert volume_average(field, volumes) == pytest.approx([2.5, 0.5])

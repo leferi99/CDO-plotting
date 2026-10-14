@@ -124,6 +124,7 @@ def basic_1D(
     ylinthresh=1.0,
     xlim=(None, None),
     ylim=(None, None),
+    yticks=None,
     legendloc=None,
     legendfontsize="small",
     folder=None,
@@ -135,7 +136,8 @@ def basic_1D(
 
     ``ydata`` is a sequence of arrays. Per-curve ``labels``, ``colors`` and
     ``linestyles`` are applied by position when given. ``yscale`` may be
-    ``symlog``, in which case ``ylinthresh`` sets the linear band around zero.
+    ``symlog``, in which case ``ylinthresh`` sets the linear band around zero
+    and :func:`symlog_ticks` gives legible ``yticks`` for a wide range.
     """
     fig = plt.figure(figsize=figsize)
     for i, data in enumerate(ydata):
@@ -156,6 +158,8 @@ def basic_1D(
     axes.set_xscale(xscale)
     axes.set_xlim(xlim)
     axes.set_ylim(ylim)
+    if yticks is not None:
+        axes.set_yticks(yticks)
     axes.set_xlabel(xlabel)
     axes.set_ylabel(ylabel)
     if title is not None:

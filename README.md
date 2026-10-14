@@ -58,7 +58,11 @@ Besides the figures above, it draws r-t colour-meshes of each runaway generation
 ```bash
 python scripts/plot_all_runs.py                     # all groups -> ./plots
 python scripts/plot_all_runs.py --group demo_jorek  # one group
+python scripts/plot_all_runs.py --pdf               # PDF copies in each run's pdf/
 ```
+
+PNGs are written directly in each run folder, for previewing and comparing.
+PDFs are off by default.
 
 ## Tests
 

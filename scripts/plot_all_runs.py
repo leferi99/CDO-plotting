@@ -4,8 +4,9 @@ Sweeps the run folders of each group, builds a standard figure set for each run,
 and draws cross-run overlays within the group. Every figure is guarded, so a run
 missing a field or a grid is skipped for that figure without aborting the sweep.
 
-Each figure is written twice, as a PNG under `<out>/<group>/<tag>/png/` and as a
-PDF under `<out>/<group>/<tag>/pdf/`. Cross-run overlays go under
+Each figure is written as a PNG directly in `<out>/<group>/<tag>/`, for quick
+previewing and side-by-side comparison. With `--pdf` a PDF copy also goes into
+`<out>/<group>/<tag>/pdf/`. Cross-run overlays go under
 `<out>/<group>/_comparison/`. A progress table is written to `<out>/index.md`.
 
 Snapshot times for profiles, spectra and distributions come from
@@ -19,6 +20,7 @@ Usage:
     python scripts/plot_all_runs.py --only ar0p3pct      # substring filter
     python scripts/plot_all_runs.py --out /path/figures
     python scripts/plot_all_runs.py --runs-root /path/output --glob "tauw_*"
+    python scripts/plot_all_runs.py --pdf                # PDF copies as well
 
 Figures use the native reader in `cdo`, so no DREAM install is needed.
 """
@@ -65,58 +67,32 @@ JOREK_T0_MS = 5.762537968682188
 JOREK_IP_POINTS = [(0.0, 18.79), (JOREK_T0_MS, 18.74), (267.0, 16.1)]
 JOREK_PLATEAU_MA = 16.1
 
-#: Runaway generation channels: canonical field, file-name key, legend label.
-#: With a kinetic runaway grid, `runawayRate` is the flux from the hot-tail grid
-#: into the runaway grid, and the Dreicer and avalanche rates are fluid-model
-#: estimates that do not enter it. Avalanche acts on `f_re` directly.
-RATE_CHANNELS = [
-    ("runawayRate", "total", r"$\gamma_{\rm tot}$"),
-    ("gammaHottail", "hottail_flux", r"$\gamma_{\rm hot}$"),
-    ("gammaDreicer", "dreicer", r"$\gamma_{\rm D}$"),
-    ("avalanche", "avalanche", r"$\Gamma_{\rm ava} n_{\rm RE}$"),
-    ("gammaCompton", "compton", r"$\gamma_{\rm C}$"),
-    ("gammaTritium", "tritium", r"$\gamma_{\rm T}$"),
-]
-
-
 # --- figure emitter -------------------------------------------------------
 
 
 class Emitter:
-    """Save a returned figure as PNG and PDF in separate subdirectories.
+    """Save a returned figure as a PNG in ``base``, and a PDF in ``base/pdf``.
 
-    The `cdo.plotting` builders return the open figure when given no `savename`.
-    Saving both formats is done here rather than in the package, which writes
-    PNG only.
+    The PNGs sit together at the top of the run folder for previewing. PDFs are
+    written only when ``pdf`` is true. The `cdo.plotting` builders return the
+    open figure when given no `savename`, and saving happens here.
     """
 
-    def __init__(self, base: Path, dpi: int = 150):
-        self.png_dir = base / "png"
-        self.pdf_dir = base / "pdf"
+    def __init__(self, base: Path, dpi: int = 150, pdf: bool = False):
+        self.base = base
+        self.pdf_dir = base / "pdf" if pdf else None
         self.dpi = dpi
-        self.png_dir.mkdir(parents=True, exist_ok=True)
-        self.pdf_dir.mkdir(parents=True, exist_ok=True)
+        self.base.mkdir(parents=True, exist_ok=True)
+        if self.pdf_dir is not None:
+            self.pdf_dir.mkdir(exist_ok=True)
 
     def __call__(self, fig, name: str):
         if fig is None:
             return
-        fig.savefig(self.png_dir / f"{name}.png", dpi=self.dpi)
-        fig.savefig(self.pdf_dir / f"{name}.pdf")
+        fig.savefig(self.base / f"{name}.png", dpi=self.dpi)
+        if self.pdf_dir is not None:
+            fig.savefig(self.pdf_dir / f"{name}.pdf")
         plt.close(fig)
-
-
-def _rate(run, name):
-    """A generation rate in 1/(s m^3) over (time, radius), or None if absent."""
-    if name == "avalanche":
-        gamma, n_re = run.field("GammaAva"), run.field("n_re")
-        return None if gamma is None or n_re is None else gamma * n_re
-    return run.field(name)
-
-
-def _volume_mean(run, field):
-    """Volume-weighted radial mean of a (time, radius) field."""
-    dV = run.cell_volumes
-    return np.nansum(field * dV, axis=1) / np.sum(dV)
 
 
 def _kinetic_current(run):
@@ -182,32 +158,28 @@ def figure_set(run, emit):
 
     attempt("currents", currents)
 
-    rates = [(key, label, _rate(run, name)) for name, key, label in RATE_CHANNELS]
-    rates = [(k, lab, r) for k, lab, r in rates if r is not None]
-    # Drop channels that stay negligible, such as tritium and Compton when those
-    # sources are off, or a fluid Dreicer estimate many decades below the rest.
-    strongest = max((np.nanmax(np.abs(r)) for _, _, r in rates), default=0.0)
-    rates = [(k, lab, r) for k, lab, r in rates
-             if np.nanmax(np.abs(r)) > 1e-12 * strongest]
+    # Negligible channels, such as tritium and Compton with those sources off,
+    # are already dropped here.
+    rates = cdo.derived.generation_rates(run)
 
     # Runaway generation rates, volume-averaged over the plasma.
     def generation_rates():
         if not rates:
             return None
-        curves = [_volume_mean(run, r) for _, _, r in rates]
+        curves = [cdo.derived.volume_average(r, run.cell_volumes)
+                  for r in rates.values()]
         peak = max(np.nanmax(np.abs(c)) for c in curves)
         linthresh = peak * 1e-8
         with plt.rc_context(plotting.LINE_RC):
-            fig = plotting.basic_1D(
-                curves, t_ms, labels=[lab for _, lab, _ in rates],
+            return plotting.basic_1D(
+                curves, t_ms, labels=[labels.RATES[key] for key in rates],
                 yscale="symlog", ylinthresh=linthresh,
+                yticks=plotting.symlog_ticks(linthresh, peak),
                 xlabel=labels.TIME,
                 ylabel=r"Volume-averaged rate [1/(s m$^3$)]",
                 title=labels.quantity("re_generation_rates"),
                 legendloc="best", legendfontsize="x-small",
             )
-            fig.axes[0].set_yticks(plotting.symlog_ticks(linthresh, peak))
-            return fig
 
     attempt("generation_rates", generation_rates)
 
@@ -232,9 +204,9 @@ def figure_set(run, emit):
                 )
         return build
 
-    for key, label, rate in rates:
-        attempt(f"rate_map_{key}", rate_map(label, rate, "linear"))
-        attempt(f"rate_map_{key}_logtime", rate_map(label, rate, "log"))
+    for key, rate in rates.items():
+        attempt(f"rate_map_{key}", rate_map(labels.RATES[key], rate, "linear"))
+        attempt(f"rate_map_{key}_logtime", rate_map(labels.RATES[key], rate, "log"))
 
     # Electron temperature over time and radius.
     def temperature():
@@ -496,7 +468,8 @@ def discover(runs_root: Path, globs, only: str | None):
     return runs
 
 
-def process(folder: Path, tag: str, out_dir: Path, dpi: int, per_run: bool = True):
+def process(folder: Path, tag: str, out_dir: Path, dpi: int, per_run: bool = True,
+            pdf: bool = False):
     """Load one run, write its figures, and return a progress record."""
     record = {"tag": tag, "folder": str(folder)}
     with warnings.catch_warnings():
@@ -521,7 +494,7 @@ def process(folder: Path, tag: str, out_dir: Path, dpi: int, per_run: bool = Tru
                 "Ire": None if kinetic is None else np.asarray(kinetic).copy(),
             }
             if per_run:
-                emit = Emitter(out_dir / tag, dpi=dpi)
+                emit = Emitter(out_dir / tag, dpi=dpi, pdf=pdf)
                 record["figures"] = figure_set(run, emit)
             else:
                 record["figures"] = []
@@ -534,7 +507,8 @@ def write_index(sections, out_root: Path):
     lines = [
         "# DREAM run figures",
         "",
-        "Each run folder holds `png/` and `pdf/` subdirectories with the same figures.",
+        "Each run folder holds its figures as PNGs, with PDF copies in `pdf/` "
+        "when the sweep ran with `--pdf`.",
         "Cross-run overlays are under `<group>/_comparison/`.",
     ]
     for group, runs_root, records, compare_made in sections:
@@ -572,7 +546,7 @@ def sweep_group(group, runs_root, globs, prefix, args):
         print(f"-- {tag}")
         try:
             record, comp = process(folder, tag, out_dir, args.dpi,
-                                   per_run=not args.no_per_run)
+                                   per_run=not args.no_per_run, pdf=args.pdf)
         except Exception as exc:
             print(f"    [error] {exc}")
             records.append({"tag": tag, "folder": str(folder)})
@@ -588,7 +562,7 @@ def sweep_group(group, runs_root, globs, prefix, args):
 
     compare_made = []
     if not args.no_compare and series:
-        emit = Emitter(out_dir / "_comparison", dpi=args.dpi)
+        emit = Emitter(out_dir / "_comparison", dpi=args.dpi, pdf=args.pdf)
         jorek = group == "demo_jorek"
         trace = load_jorek_trace(args.jorek_csv) if jorek and args.jorek_csv else None
         compare_made = comparison_figures(series, emit, jorek=jorek, jorek_trace=trace)
@@ -614,6 +588,8 @@ def main(argv=None):
                         help="JOREK I_p trace for the demo_jorek overlay: "
                              "columns JOREK time [ms], I_p [MA]")
     parser.add_argument("--dpi", type=int, default=150)
+    parser.add_argument("--pdf", action="store_true",
+                        help="also save each figure as a PDF in a pdf/ subfolder")
     parser.add_argument("--no-per-run", action="store_true",
                         help="skip per-run figures, draw only the comparisons")
     parser.add_argument("--no-compare", action="store_true",
@@ -634,7 +610,7 @@ def main(argv=None):
     if not any(records for _, _, records, _ in sections):
         raise SystemExit("no runs found")
 
-    print(f"\nfigures under {args.out}  (per run: png/ and pdf/)")
+    print(f"\nfigures under {args.out}" + ("  (PDF copies in pdf/)" if args.pdf else ""))
     if args.no_per_run or args.group or args.only:
         return  # a partial sweep would overwrite the full index
     write_index(sections, args.out)
