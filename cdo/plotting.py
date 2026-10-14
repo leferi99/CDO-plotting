@@ -449,7 +449,7 @@ def distribution_momentum_panels(
         mesh = ax.pcolormesh(p_edges, xi_deg_edges,
                              np.ma.masked_less(data, norm.vmin), norm=norm)
         ax.set_facecolor("black")
-        ax.set_title(f"t = {t_ms[i]:.3g} ms", fontsize="small")
+        ax.set_title(f"t = {time_label(t_ms, i)}", fontsize="small")
     for ax in axes.flat[n:]:
         ax.set_visible(False)
     for ax in axes[-1]:
@@ -546,31 +546,53 @@ def indices_every(timegrid, step, start=None):
     return frames
 
 
-#: Snapshot times in ms for runs of at least ``LONG_RUN_MS``.
-TIME_MARKS_LONG = (0, 1, 10, 25, 50, 75, 100, 150, 200, 250, 300, 400, 500)
-#: Snapshot times in ms for shorter runs, which resolve the thermal quench.
-TIME_MARKS_SHORT = (0, 0.1, 0.25, 0.5, 1, 2, 4, 6, 8, 10, 15)
-#: Marks left out of line plots, where too many curves crowd the axes.
-TIME_MARKS_SPARSE_SKIP = (25, 75, 0.25, 6)
-LONG_RUN_MS = 20.0
+#: Snapshot times in ms for colour-mesh panels, by run length: runs of at least
+#: ``SHORT_RUN_MS``, and shorter runs, which resolve the thermal quench.
+MESH_MARKS_LONG = (0, 1, 10, 25, 50, 75, 100, 150, 200, 250, 300, 400, 500)
+MESH_MARKS_SHORT = (0, 0.1, 0.25, 0.5, 1, 2, 4, 6, 8, 10, 15)
+#: Snapshot times in ms for line plots, fewer so the curves stay apart: runs
+#: past ``MEDIUM_RUN_MS``, runs of ``SHORT_RUN_MS`` to ``MEDIUM_RUN_MS``, where
+#: the 10-50 ms window holds the current quench and the avalanche, and shorter
+#: runs.
+LINE_MARKS_LONG = (0, 1, 10, 20, 30, 50, 100, 200, 300, 400, 500)
+LINE_MARKS_MEDIUM = (0, 1, 5, 10, 20, 30, 40, 50)
+LINE_MARKS_SHORT = (0, 0.1, 0.5, 1, 2, 4)
+SHORT_RUN_MS = 20.0
+MEDIUM_RUN_MS = 100.0
 
 
-def time_marks(timegrid_ms, sparse=False):
+def nearest_indices(timegrid, times):
+    """Index of the grid cell nearest to each requested time."""
+    t = np.asarray(timegrid)
+    i = np.clip(np.searchsorted(t, times), 1, len(t) - 1)
+    left_closer = np.asarray(times) - t[i - 1] < t[i] - np.asarray(times)
+    return np.where(left_closer, i - 1, i).astype(int)
+
+
+def time_marks(timegrid_ms, lines=False):
     """Time-step indices of the standard snapshot times within one run.
 
-    Picks the marks of :data:`TIME_MARKS_LONG` or :data:`TIME_MARKS_SHORT` by
-    run length, keeps those inside the run, and closes with the final step when
-    it lies clearly past the last mark. ``sparse`` drops the marks in
-    :data:`TIME_MARKS_SPARSE_SKIP`, for line plots. The 0 ms mark resolves to
-    the first saved step, since the initial state is not part of a run.
+    Picks the mark set by run length, from the ``MESH_MARKS_*`` sets, or the
+    ``LINE_MARKS_*`` sets with ``lines``. Keeps the marks inside the run, closes
+    with the final step when it lies clearly past the last mark, and snaps each
+    mark to the nearest saved step. The 0 ms mark resolves to the first saved
+    step, since the initial state is not part of a run.
     """
     t = np.asarray(timegrid_ms)
     end = t[-1]
-    marks = TIME_MARKS_LONG if end >= LONG_RUN_MS else TIME_MARKS_SHORT
+    if lines:
+        marks = (LINE_MARKS_SHORT if end < SHORT_RUN_MS
+                 else LINE_MARKS_MEDIUM if end <= MEDIUM_RUN_MS
+                 else LINE_MARKS_LONG)
+    else:
+        marks = MESH_MARKS_SHORT if end < SHORT_RUN_MS else MESH_MARKS_LONG
     marks = [m for m in marks if m <= end * 1.001]
-    if sparse:
-        marks = [m for m in marks if m not in TIME_MARKS_SPARSE_SKIP]
     if end > marks[-1] * 1.05:
         marks.append(end)
-    steps = np.clip(index_array(t, marks), 0, len(t) - 1)
+    steps = nearest_indices(t, marks)
     return list(dict.fromkeys(int(i) for i in steps))
+
+
+def time_label(timegrid_ms, step):
+    """Legend or title text for a time step, with the first step shown as 0 ms."""
+    return "0 ms" if step == 0 else f"{timegrid_ms[step]:.3g} ms"

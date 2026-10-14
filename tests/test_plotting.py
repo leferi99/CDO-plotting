@@ -149,12 +149,34 @@ def test_indices_every_terminates_on_fine_step():
     assert frames[-1] == len(timegrid) - 1
 
 
-def test_time_marks_long_run_uses_the_ms_ladder_and_closes_at_the_end():
+def test_time_marks_medium_run_uses_both_ladders_and_closes_at_the_end():
     timegrid = np.arange(0.2, 70.01, 0.2)
     frames = plotting.time_marks(timegrid)
     assert [round(timegrid[i], 1) for i in frames] == [0.2, 1.0, 10.0, 25.0, 50.0, 70.0]
-    sparse = plotting.time_marks(timegrid, sparse=True)
-    assert [round(timegrid[i], 1) for i in sparse] == [0.2, 1.0, 10.0, 50.0, 70.0]
+    lines = plotting.time_marks(timegrid, lines=True)
+    assert [round(timegrid[i], 1) for i in lines] == [
+        0.2, 1.0, 5.0, 10.0, 20.0, 30.0, 40.0, 50.0, 70.0]
+
+
+def test_time_marks_long_run_line_ladder():
+    timegrid = np.linspace(0.1, 300.0, 3000)
+    lines = plotting.time_marks(timegrid, lines=True)
+    assert [round(timegrid[i]) for i in lines] == [
+        0, 1, 10, 20, 30, 50, 100, 200, 300]
+
+
+def test_time_marks_snap_to_the_nearest_step():
+    timegrid = np.array([0.001, 0.12, 0.45, 0.7, 1.0])
+    frames = plotting.time_marks(timegrid, lines=True)
+    # Each mark takes the nearest step: 0.1 the 0.12 one, and 0.5 the earlier
+    # 0.45 one, not the next step after it.
+    assert [timegrid[i] for i in frames] == [0.001, 0.12, 0.45, 1.0]
+
+
+def test_time_label_shows_the_first_step_as_zero():
+    timegrid = np.array([1e-6, 0.5, 10.0])
+    assert plotting.time_label(timegrid, 0) == "0 ms"
+    assert plotting.time_label(timegrid, 2) == "10 ms"
 
 
 def test_time_marks_short_run_resolves_sub_millisecond_steps():

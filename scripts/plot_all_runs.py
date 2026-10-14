@@ -9,9 +9,11 @@ previewing and side-by-side comparison. With `--pdf` a PDF copy also goes into
 `<out>/<group>/<tag>/pdf/`. Cross-run overlays go under
 `<out>/<group>/_comparison/`. A progress table is written to `<out>/index.md`.
 
-Snapshot times for profiles, spectra and distributions come from
-`plotting.time_marks`: 0, 1, 10, 25, 50, 75, 100, 150 ... ms for long runs, a
-finer ladder for runs shorter than 20 ms, always closing with the final step.
+Snapshot times come from `plotting.time_marks`, picked by run length and closed
+with the final step. Line plots use 0, 1, 10, 20, 30, 50, 100, 200, 300 ms past
+100 ms, 0, 1, 5, 10, 20, 30, 40, 50 ms for 20-100 ms, and 0, 0.1, 0.5, 1, 2,
+4 ms below 20 ms. Distribution panels use a fuller set and skip its first two
+times, where the runaway population is still negligible.
 
 Usage:
 
@@ -127,8 +129,10 @@ def figure_set(run, emit):
             made.append(name)
 
     t_ms = run.timegrid_ms
-    mesh_frames = plotting.time_marks(t_ms)
-    line_frames = plotting.time_marks(t_ms, sparse=True)
+    # The first two panel times, 0 and 1 ms or 0 and 0.1 ms, show no runaway
+    # population yet, so the distribution panels start from the third.
+    panel_frames = plotting.time_marks(t_ms)[2:]
+    line_frames = plotting.time_marks(t_ms, lines=True)
 
     # Currents over time, in megaamperes.
     def currents():
@@ -294,7 +298,7 @@ def figure_set(run, emit):
                 return None
             with plt.rc_context(plotting.MESH_RC):
                 return plotting.distribution_momentum_panels(
-                    run, grid, timesteps=mesh_frames, radial_cell=radial_cell,
+                    run, grid, timesteps=panel_frames, radial_cell=radial_cell,
                     cbarlabel=labels.quantity("electron_distribution"),
                 )
         return build
@@ -310,7 +314,7 @@ def figure_set(run, emit):
                 fig = plt.figure(figsize=(8, 5))
                 for c, i in zip(colours, line_frames):
                     plt.plot(p, f[i, radial_cell, 0, :], color=c,
-                             label=f"{t_ms[i]:.3g} ms")
+                             label=plotting.time_label(t_ms, i))
                 plt.yscale("log")
                 plt.xlabel(labels.MOMENTUM)
                 plt.ylabel(labels.quantity("electron_distribution"))
@@ -347,7 +351,7 @@ def figure_set(run, emit):
             fig = plt.figure(figsize=(8, 5))
             for c, i in zip(colours, line_frames):
                 plt.plot(kinetic_MeV, dnde[i, radial_cell, :],
-                         color=c, label=f"{t_ms[i]:.3g} ms")
+                         color=c, label=plotting.time_label(t_ms, i))
             plt.yscale("log")
             plt.xlabel(labels.KINETIC_ENERGY)
             plt.ylabel(r"$dn/(dE\,dr)$ [1/(MeV m)]")
@@ -364,7 +368,7 @@ def figure_set(run, emit):
             fig = plt.figure(figsize=(8, 5))
             for c, i in zip(colours, line_frames):
                 plt.plot(run.radialgrid, run.field("T_cold")[i, :],
-                         color=c, label=f"{t_ms[i]:.3g} ms")
+                         color=c, label=plotting.time_label(t_ms, i))
             plt.yscale("log")
             plt.xlabel(labels.RADIUS)
             plt.ylabel(labels.QUANTITIES["temperature_eV"])
