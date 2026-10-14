@@ -348,7 +348,7 @@ def figure_set(run, emit):
         radial_cell = 0
         colours = plt.cm.viridis(np.linspace(0.9, 0.0, len(line_frames)))
         with plt.rc_context(plotting.LINE_RC):
-            fig = plt.figure(figsize=(8, 5))
+            fig = plt.figure(figsize=(10, 5))
             for c, i in zip(colours, line_frames):
                 plt.plot(kinetic_MeV, dnde[i, radial_cell, :],
                          color=c, label=plotting.time_label(t_ms, i))
@@ -356,7 +356,8 @@ def figure_set(run, emit):
             plt.xlabel(labels.KINETIC_ENERGY)
             plt.ylabel(r"$dn/(dE\,dr)$ [1/(MeV m)]")
             plt.title(f"At r = {run.radialgrid[radial_cell]:.2f} m")
-            plt.legend(fontsize="small")
+            # Outside the axes, so no spectrum is hidden.
+            plt.legend(fontsize="small", loc="upper left", bbox_to_anchor=(1.01, 1.0))
             return fig
 
     attempt("energy_spectrum", energy_spectrum)
@@ -395,36 +396,70 @@ def load_jorek_trace(path):
     return data[:, 0], data[:, 1]
 
 
-def comparison_figures(series, emit, jorek=False, jorek_trace=None):
+#: Line styles for the ITER non-regression overlay, by run tag, as
+#: (colour, line style, width). The three main runs are wide solid lines. Each
+#: variant is a thinner patterned line drawn over the run it differs from by one
+#: factor, so both stay visible where they agree: rp_boltzmann-eqterm over
+#: rp_commit-53d8afb, and the tolerance and Ar variants over
+#: boltzmann_boltzmann-eqterm.
+NONREGRESSION_STYLES = {
+    "rp_commit-53d8afb": ("tab:blue", "-", 5.0),
+    "rp_boltzmann-eqterm": ("tab:orange", (0, (4, 2)), 2.0),
+    "boltzmann_boltzmann-eqterm": ("tab:green", "-", 5.0),
+    "boltzmann_boltzmann-eqterm-ar0p3pct": ("tab:brown", (0, (6, 2, 1, 2)), 2.0),
+    "tol_abstol1e-4_boltzmann-eqterm": ("tab:red", (0, (3, 2)), 2.0),
+    "tol_abstol1e0_boltzmann-eqterm": ("tab:purple", (0, (1, 1.5)), 2.5),
+}
+
+
+def comparison_figures(series, emit, jorek=False, jorek_trace=None, styles=None):
     """Overlay the plasma and runaway currents of every run on shared axes.
 
     With ``jorek`` the time axis is JOREK time, DREAM time shifted by
     :data:`JOREK_T0_MS`, and the known JOREK current values are overdrawn in
     black: :data:`JOREK_IP_POINTS` on the plasma current, the RE plateau on the
     runaway current, and ``jorek_trace`` (times, I_p in MA) when given.
+
+    ``styles`` maps run tags to (colour, line style, width). Wider lines are
+    drawn underneath, so a thin patterned variant shows over its reference.
+    Runs without an entry get solid lines in colours spread over the run count.
     """
     if not series:
         return []
     made = []
-    colours = plt.cm.turbo(np.linspace(0.05, 0.95, len(series)))
+    default = plt.cm.turbo(np.linspace(0.05, 0.95, len(series)))
+    looks = [(styles or {}).get(s["tag"], (c, "-", 1.5))
+             for c, s in zip(default, series)]
     offset = JOREK_T0_MS if jorek else 0.0
 
-    def overlay(key, ylabel, absval=False, reference=()):
+    # Runs much shorter than the longest are squeezed at the left edge, so a
+    # zoomed copy also covers the span of the longest of those short runs.
+    ends = [s["t_ms"][-1] for s in series]
+    short = [e for e in ends if e < 0.5 * max(ends)]
+    zoom_ms = max(short) + offset if short else None
+
+    def overlay(key, ylabel, absval=False, reference=(), xmax=None):
         with plt.rc_context(plotting.LINE_RC):
             fig = plt.figure(figsize=(11, 5))
             drawn = False
-            for c, s in zip(colours, series):
+            visible = []
+            for (colour, ls, lw), s in zip(looks, series):
                 y = s.get(key)
                 if y is None:
                     continue
                 y = np.abs(y) if absval else y
-                plt.plot(s["t_ms"] + offset, y / 1e6, color=c, label=s["tag"])
+                t = s["t_ms"] + offset
+                plt.plot(t, y / 1e6, color=colour, ls=ls, lw=lw,
+                         zorder=3 - 0.1 * lw, label=s["tag"])
+                visible.append(y[t <= xmax] / 1e6 if xmax else y / 1e6)
                 drawn = True
             if not drawn:
                 plt.close(fig)
                 return None
             if jorek and key == "Ip" and jorek_trace is not None:
                 plt.plot(*jorek_trace, color="k", lw=2.5, label="JOREK")
+            if xmax:
+                reference = [(t, i) for t, i in reference if t <= xmax]
             if reference:
                 t_ref, i_ref = zip(*reference)
                 plt.plot(t_ref, i_ref, ls="none", marker="o", ms=8, mfc="none",
@@ -433,23 +468,33 @@ def comparison_figures(series, emit, jorek=False, jorek_trace=None):
             axes = plt.gca()
             axes.set_xlabel("JOREK time [ms]" if jorek else labels.TIME)
             axes.set_ylabel(ylabel)
-            axes.set_xlim(0, None)
+            axes.set_xlim(0, xmax)
+            if xmax:
+                # Fit the y range to what is inside the zoom window.
+                values = np.concatenate([v[np.isfinite(v)] for v in visible])
+                if values.size:
+                    pad = 0.05 * (values.max() - values.min()) or 0.05
+                    axes.set_ylim(values.min() - pad, values.max() + pad)
             # Outside the axes, so no curve or reference marker is hidden.
             axes.legend(fontsize="x-small", ncol=1, loc="upper left",
                         bbox_to_anchor=(1.01, 1.0))
             return fig
 
-    fig = overlay("Ip", r"Plasma current $I_{\rm p}$ [MA]",
-                  reference=JOREK_IP_POINTS if jorek else ())
-    if fig is not None:
-        emit(fig, "compare_plasma_current")
-        made.append("compare_plasma_current")
-
-    fig = overlay("Ire", r"Runaway current $I_{\rm RE}$ [MA]", absval=True,
-                  reference=[(267.0, JOREK_PLATEAU_MA)] if jorek else ())
-    if fig is not None:
-        emit(fig, "compare_runaway_current")
-        made.append("compare_runaway_current")
+    figures = [
+        ("compare_plasma_current", "Ip", r"Plasma current $I_{\rm p}$ [MA]", False,
+         JOREK_IP_POINTS if jorek else ()),
+        ("compare_runaway_current", "Ire", r"Runaway current $I_{\rm RE}$ [MA]", True,
+         [(267.0, JOREK_PLATEAU_MA)] if jorek else ()),
+    ]
+    for name, key, ylabel, absval, reference in figures:
+        windows = [(name, None)]
+        if zoom_ms is not None:
+            windows.append((f"{name}_zoom", zoom_ms))
+        for figname, xmax in windows:
+            fig = overlay(key, ylabel, absval=absval, reference=reference, xmax=xmax)
+            if fig is not None:
+                emit(fig, figname)
+                made.append(figname)
 
     return made
 
@@ -568,7 +613,9 @@ def sweep_group(group, runs_root, globs, prefix, args):
         emit = Emitter(out_dir / "_comparison", dpi=args.dpi, pdf=args.pdf)
         jorek = group == "demo_jorek"
         trace = load_jorek_trace(args.jorek_csv) if jorek and args.jorek_csv else None
-        compare_made = comparison_figures(series, emit, jorek=jorek, jorek_trace=trace)
+        styles = NONREGRESSION_STYLES if group == "iter_nonregression" else None
+        compare_made = comparison_figures(series, emit, jorek=jorek, jorek_trace=trace,
+                                          styles=styles)
         if compare_made:
             print(f"   comparison: {', '.join(compare_made)}")
     return group, runs_root, records, compare_made
