@@ -57,6 +57,9 @@ class Run:
 
         self._cache: dict[str, np.ndarray] = {}
         self._moments: dict[str, MomentumMoments] = {}
+        #: Arrays derived from fields, such as moments and rate channels, kept
+        #: by `cdo.figures` across figures. Cleared by `drop_cache`.
+        self.derived_cache: dict = {}
 
         self._build_time_grid()
         self._check_consistency()
@@ -75,6 +78,7 @@ class Run:
         read again on the next access.
         """
         self._cache.clear()
+        self.derived_cache.clear()
 
     def close(self):
         for handle in self._handles:

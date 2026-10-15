@@ -181,9 +181,17 @@ def sweep_group(group, runs_root, globs, prefix, args):
                     ("JOREK trace", t_tr, i_tr, dict(color="k", lw=2.5)))
         if group == "iter_nonregression":
             styles = NONREGRESSION_STYLES
-        compare_made = figures.compare(runs, out=out_dir / "_comparison",
-                                       time_shift_ms=shift, references=references,
-                                       styles=styles, pdf=args.pdf, dpi=args.dpi)
+        options = dict(out=out_dir / "_comparison", time_shift_ms=shift,
+                       references=references, styles=styles, pdf=args.pdf, dpi=args.dpi)
+        compare_made = figures.compare(runs, **options)
+        # Runs much shorter than the longest are squeezed at the left edge, so
+        # a zoomed copy covers the span of the longest of those short runs.
+        ends = {tag: float(run.timegrid_ms[-1]) + shift.get(tag, 0.0)
+                for tag, run in runs.items()}
+        short = [e for e in ends.values() if e < 0.5 * max(ends.values())]
+        if short:
+            compare_made += figures.compare(runs, time_range_ms=(None, max(short)),
+                                            suffix="_zoom", **options)
         print(f"   comparison: {', '.join(compare_made)}")
     for run in runs.values():
         run.close()

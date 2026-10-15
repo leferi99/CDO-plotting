@@ -15,7 +15,7 @@ The project venv is `.venv` in this folder, separate from the `DREAM-runs` venv 
 
 ```bash
 /opt/cray/pe/python/3.11.7/bin/python -m venv .venv
-.venv/bin/python -m pip install numpy scipy h5py matplotlib pytest jupyterlab jupytext ipywidgets tomli-w
+.venv/bin/python -m pip install numpy scipy h5py matplotlib pytest jupyterlab jupytext ipywidgets
 ```
 
 ## Layout

@@ -136,8 +136,14 @@ class Context:
         return value
 
     def grid_on(self, grid: str) -> bool:
+        """Whether the run has this grid and its distribution, without loading it."""
         return bool(self.run.reference.grids.get(grid)) and \
-            self.run.field(FIELD_OF_GRID[grid]) is not None
+            f"eqsys/{FIELD_OF_GRID[grid]}" in self.run.reference.handle
+
+    @property
+    def derived_cache(self) -> dict:
+        """Per-run cache of derived arrays, shared by every Context of the run."""
+        return self.run.derived_cache
 
 
 def _time_colours(n: int):
@@ -325,9 +331,10 @@ RATE_STYLES = {
 
 
 def _rate_channels(ctx: Context):
-    if not hasattr(ctx, "_rates"):
-        ctx._rates = derived.rate_channels(ctx.run)
-    return ctx._rates
+    cache = ctx.derived_cache
+    if "rate_channels" not in cache:
+        cache["rate_channels"] = derived.rate_channels(ctx.run)
+    return cache["rate_channels"]
 
 
 def _generation_rates(ctx: Context):
@@ -447,14 +454,15 @@ def _isotropic_distribution(ctx, grid, radius, rng, p, frames):
 
 
 def _density_moment(ctx: Context, grid: str):
-    """dn/dp over (t, r, p), cached per grid."""
-    cache = ctx.__dict__.setdefault("_dndp", {})
-    if grid not in cache:
+    """dn/dp over (t, r, p), cached per run and grid."""
+    cache = ctx.derived_cache
+    key = f"dndp_{grid}"
+    if key not in cache:
         value = ctx.run.angle_average(grid, "density")
         if value is None:
             raise Skip(f"no {GRID_NAMES[grid]} grid")
-        cache[grid] = value
-    return cache[grid]
+        cache[key] = value
+    return cache[key]
 
 
 def _dndp(ctx: Context, grid: str, radius: Radius, rng):
@@ -602,8 +610,13 @@ def make_figures(run, selection: Selection | None = None, out=None, *, pdf: bool
 
 def compare(runs: dict, out=None, *, time_shift_ms: dict | None = None,
             references: dict | None = None, styles: dict | None = None,
+            time_range_ms: tuple = (None, None), suffix: str = "",
             pdf: bool = False, dpi: int = 150) -> list[str]:
     """Overlay scalar time traces of several runs.
+
+    ``time_range_ms`` limits the (shifted) time axis and fits the y range to
+    what is inside it, for a zoomed copy. ``suffix`` is appended to every
+    figure name, for example ``"_zoom"``.
 
     ``runs`` maps legend labels to :class:`cdo.Run`. ``time_shift_ms`` maps
     labels to an offset added to their time axis. ``references`` maps figure
@@ -635,23 +648,45 @@ def compare(runs: dict, out=None, *, time_shift_ms: dict | None = None,
     )
     made = []
     out = Path(out) if out is not None else None
+    t_lo, t_hi = time_range_ms
+
+    def inside(t):
+        keep = np.ones(t.shape, dtype=bool)
+        if t_lo is not None:
+            keep &= t >= t_lo
+        if t_hi is not None:
+            keep &= t <= t_hi
+        return keep
+
     for name, what, ylabel, scale in figures:
+        name = name + suffix
         with plt.rc_context(plotting.LINE_RC):
             fig, ax = plt.subplots(figsize=(11, 5))
-            drawn = False
+            visible = []
             for label, run in runs.items():
                 y = series(run, what)
                 if y is None:
                     continue
                 t = np.asarray(run.timegrid_ms) + time_shift_ms.get(label, 0.0)
-                ax.plot(t, _line_values(y, scale), label=label, **looks[label])
-                drawn = True
-            for ref_label, t_ref, y_ref, style in references.get(name, ()):
+                y = _line_values(y, scale)
+                ax.plot(t, y, label=label, **looks[label])
+                visible.append(y[inside(t)])
+            for ref_label, t_ref, y_ref, style in references.get(name.removesuffix(suffix), ()):
                 ax.plot(t_ref, y_ref, label=ref_label, **style)
-            if not drawn:
+            if not visible:
                 plt.close(fig)
                 continue
             _set_scale(ax, scale)
+            if t_lo is not None or t_hi is not None:
+                ax.set_xlim(t_lo, t_hi)
+                values = np.concatenate(visible)
+                values = values[np.isfinite(values)]
+                if values.size:
+                    if scale == "log":
+                        ax.set_ylim(values.min() / 1.3, values.max() * 1.3)
+                    else:
+                        pad = 0.05 * (values.max() - values.min()) or 0.05
+                        ax.set_ylim(values.min() - pad, values.max() + pad)
             ax.set_xlabel(TIME_LABEL + (" (shifted)" if time_shift_ms else ""))
             ax.set_ylabel(ylabel)
             _legend_outside(ax)
