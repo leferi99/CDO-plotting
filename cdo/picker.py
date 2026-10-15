@@ -3,11 +3,13 @@
 :func:`pick_runs` lists the run folders under one or more roots, with the
 number of committed legs, the simulated end time, the DREAM commit and the
 avalanche mode read from each run's last output file. In Jupyter it shows a
-filterable multi-select box. Elsewhere it prints a numbered table, and
-:meth:`RunPicker.choose` takes the numbers.
+checkbox per run (``multiple=True``) or a single-choice list, with a filter
+field and a line showing the current choice. Elsewhere it prints a numbered
+table, and :meth:`RunPicker.choose` takes the numbers.
 
-    picker = cdo.pick_runs()          # tick runs in the box
-    folders = picker.selected         # list of Path
+    picker = cdo.pick_runs()                  # tick any number of runs
+    picker = cdo.pick_runs(multiple=False)    # select exactly one run
+    folders = picker.selected                 # list of Path, in list order
 """
 
 from __future__ import annotations
@@ -95,30 +97,92 @@ def survey_runs(roots=DEFAULT_ROOTS, globs=("*",)) -> list[RunInfo]:
 
 
 class RunPicker:
-    """A list of runs to choose from, with a widget when ipywidgets is usable."""
+    """A list of runs to choose from, with a widget when ipywidgets is usable.
 
-    def __init__(self, infos: list[RunInfo]):
+    With ``multiple`` every run has a checkbox, so any set can be ticked
+    without Ctrl+click. Without it, a list where exactly one run is selected.
+    The filter field only hides rows, it never changes the choice, and the line
+    under the box always shows what :attr:`selected` returns.
+    """
+
+    def __init__(self, infos: list[RunInfo], multiple: bool = True):
         self.runs = infos
+        self.multiple = multiple
         self._chosen: list[Path] = []
-        self._widget = None
+        self._checks = None  # multiple: one Checkbox per run
+        self._select = None  # single: a Select
 
     @property
     def selected(self) -> list[Path]:
-        if self._widget is not None:
-            return list(self._widget.value)
+        """The chosen run folders, in list order."""
+        if self._checks is not None:
+            return [info.path for info, box in zip(self.runs, self._checks) if box.value]
+        if self._select is not None:
+            return [] if self._select.value is None else [self._select.value]
         return list(self._chosen)
 
     def choose(self, *numbers: int) -> list[Path]:
         """Pick runs by their number in the printed table."""
+        if not self.multiple and len(numbers) > 1:
+            raise ValueError("this picker takes one run")
         self._chosen = [self.runs[n].path for n in numbers]
         return self._chosen
 
     def table(self) -> str:
         return "\n".join(f"{n:3d}  {info.label}" for n, info in enumerate(self.runs))
 
+    def widget(self):
+        """Build the selection widget. :meth:`show` displays it."""
+        import ipywidgets as w
+
+        status = w.HTML()
+        filt = w.Text(placeholder="filter by name, e.g. tauw or boltzmann",
+                      layout=w.Layout(width="50%"))
+
+        def update_status(*_):
+            chosen = self.selected
+            names = ", ".join(p.name for p in chosen) or "nothing"
+            status.value = f"<b>Selected ({len(chosen)}):</b> {names}"
+
+        if self.multiple:
+            self._checks = [w.Checkbox(value=False, description=info.label, indent=False,
+                                       layout=w.Layout(width="100%"))
+                            for info in self.runs]
+            for box in self._checks:
+                box.observe(update_status, names="value")
+            rows = w.VBox(self._checks, layout=w.Layout(max_height="420px", overflow="auto"))
+            none = w.Button(description="untick all", layout=w.Layout(width="auto"))
+            none.on_click(lambda _: [setattr(b, "value", False) for b in self._checks])
+
+            def refilter(change):
+                text = change["new"].lower()
+                for info, box in zip(self.runs, self._checks):
+                    box.layout.display = "" if text in info.label.lower() else "none"
+
+            body = [w.HBox([filt, none]), rows, status]
+        else:
+            options = [(info.label, info.path) for info in self.runs]
+            self._select = w.Select(options=options, value=None,
+                                    rows=min(20, max(len(options), 2)),
+                                    layout=w.Layout(width="100%"))
+            self._select.observe(update_status, names="value")
+
+            def refilter(change):
+                text = change["new"].lower()
+                current = self._select.value
+                keep = [o for o in options if text in o[0].lower() or o[1] == current]
+                self._select.options = keep
+                self._select.value = current
+
+            body = [filt, self._select, status]
+
+        filt.observe(refilter, names="value")
+        update_status()
+        return w.VBox(body)
+
     def show(self):
         try:
-            import ipywidgets as w
+            import ipywidgets  # noqa: F401
             from IPython import get_ipython
             from IPython.display import display
         except ImportError:
@@ -133,25 +197,13 @@ class RunPicker:
         if shell is None or type(shell).__name__ == "TerminalInteractiveShell":
             print(self.table())
             return self
-
-        options = [(info.label, info.path) for info in self.runs]
-        select = w.SelectMultiple(options=options, rows=min(20, max(len(options), 2)),
-                                  layout=w.Layout(width="100%"))
-        filt = w.Text(placeholder="filter by name, e.g. tauw or boltzmann",
-                      layout=w.Layout(width="50%"))
-
-        def refilter(change):
-            keep = [o for o in options if change["new"].lower() in o[0].lower()]
-            chosen = [v for v in select.value if v in {p for _, p in keep}]
-            select.options = keep
-            select.value = chosen
-
-        filt.observe(refilter, names="value")
-        self._widget = select
-        display(w.VBox([filt, select]))
+        display(self.widget())
         return self
 
 
-def pick_runs(roots=DEFAULT_ROOTS, globs=("*",)) -> RunPicker:
-    """Show the runs under ``roots`` for choosing. Read the choice from ``.selected``."""
-    return RunPicker(survey_runs(roots, globs)).show()
+def pick_runs(roots=DEFAULT_ROOTS, globs=("*",), *, multiple: bool = True) -> RunPicker:
+    """Show the runs under ``roots`` for choosing. Read the choice from ``.selected``.
+
+    ``multiple=False`` allows exactly one run, for the single-run notebooks.
+    """
+    return RunPicker(survey_runs(roots, globs), multiple=multiple).show()

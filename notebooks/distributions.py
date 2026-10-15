@@ -32,14 +32,14 @@ from cdo.selection import KineticSelection, Selection
 cdo.plotting.use_base_style(fontsize=11)
 
 # %%
-picker = cdo.pick_runs()
+picker = cdo.pick_runs(multiple=False)
 
 # %%
 DEFAULT_RUN = os.environ.get(
     "CDO_RUN", "/project/nr_dream002/DREAM-runs/output/iter_dthmode24_rp_boltzmann-eqterm")
 RUN = picker.selected[0] if picker.selected else Path(DEFAULT_RUN)
 if not picker.selected:
-    print("No run ticked in the picker, using DEFAULT_RUN. Tick a run and re-run this cell.")
+    print("No run selected in the picker, using DEFAULT_RUN. Select one and re-run this cell.")
 run = cdo.Run.from_folder(RUN)
 print(run.report())
 

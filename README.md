@@ -98,8 +98,14 @@ On the cluster, inside `tmux`:
 
 ```bash
 cd /project/nr_dream002/CDO-plotting
-.venv/bin/jupyter lab --no-browser --port 8890
+OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4 .venv/bin/jupyter lab --no-browser --port 8890
 ```
+
+The thread caps matter on the login nodes.
+They limit each user to 500 processes and threads together, and an uncapped kernel holds about 70 threads for BLAS and OpenMP.
+A few open notebooks then exhaust the limit, and processes fail with "can't start new thread" or get killed.
+Kernels inherit the caps from the server.
+Shut down kernels of notebooks you no longer use (Kernel > Shut Down Kernel).
 
 On the laptop:
 
