@@ -39,7 +39,7 @@ from typing import Callable
 
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib import colors
+from matplotlib import colors, patheffects
 
 from . import derived, plotting
 from .energy import MEC2_EV, EnergyGrid
@@ -401,6 +401,30 @@ def _range_columns(p, rng):
     return slice(keep[0], keep[-1] + 1)
 
 
+#: Trapped-passing boundary lines on momentum-pitch maps: white dashes with a
+#: thin black outline, visible on both ends of the colour map.
+TRAPPED_LINE = dict(color="white", ls="--", lw=1.0,
+                    path_effects=[patheffects.withStroke(linewidth=2.2, foreground="black")])
+
+
+def _trapped_band_deg(ctx: Context, radius: Radius) -> tuple:
+    """Pitch angles (deg) bounding the trapped region at ``radius``, or ``()``.
+
+    DREAM computes the boundary per radius, xi0_T = sqrt(1 - Bmin/Bmax), and
+    stores it in grid/geometry/xi0TrappedBoundary. Particles with
+    |xi0| < xi0_T are trapped, so the band is arccos(xi0_T) to
+    180 deg - arccos(xi0_T). Zero means no trapping, as in a cylinder.
+    """
+    xi0 = ctx.run.reference.read("xi0_trapped_boundary")
+    if xi0 is None:
+        return ()
+    xi0_r = float(np.asarray(xi0).ravel()[radius.cell])
+    if not xi0_r > 0:
+        return ()
+    theta = math.degrees(math.acos(xi0_r))
+    return (theta, 180.0 - theta)
+
+
 def _kinetic_title(grid: str, radius: Radius, rng) -> str:
     return f"{GRID_NAMES[grid]} grid, {radius.label}, {rng.label}"
 
@@ -424,9 +448,12 @@ def _distribution(ctx: Context, grid: str, radius: Radius, rng):
     with plt.rc_context(plotting.MESH_RC):
         fig, axes = plt.subplots(nrows, ncols, sharex=True, sharey=True, squeeze=False,
                                  figsize=(3.6 * ncols + 1.4, 3.0 * nrows + 0.8))
+        band = _trapped_band_deg(ctx, radius)
         for ax, (tm, data) in zip(axes.flat, frames):
             mesh = ax.pcolormesh(edges, pitch_edges, plotting.mask_for_log(data),
                                  norm=norm, cmap=plotting.masked_cmap())
+            for angle in band:
+                ax.axhline(angle, **TRAPPED_LINE)
             ax.set_title(tm.label, fontsize="small")
         for ax in axes.flat[n:]:
             ax.set_visible(False)
@@ -436,7 +463,11 @@ def _distribution(ctx: Context, grid: str, radius: Radius, rng):
             ax.set_ylabel("Pitch angle [deg]", fontsize="small")
         cbar = fig.colorbar(mesh, ax=axes, shrink=0.9, extend="min")
         cbar.set_label(r"$f$ [m$^{-3}$ $(m_e c)^{-3}$]")
-        fig.suptitle(_kinetic_title(grid, radius, rng), fontsize="medium")
+        title = _kinetic_title(grid, radius, rng)
+        if band:
+            title += (f"\ntrapped for {band[0]:.1f}°-{band[1]:.1f}° (dashed), "
+                      f"$\\xi_{{0,T}}$ = {math.cos(math.radians(band[0])):.3f}")
+        fig.suptitle(title, fontsize="medium")
     return fig
 
 
