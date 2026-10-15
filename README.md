@@ -6,72 +6,160 @@ A run is usually split across several HDF5 output files, and the datasets presen
 
 ## Requirements
 
-Python with `numpy`, `scipy`, `h5py` and `matplotlib`. A DREAM install is not needed for reading, moments, or plotting. It is used only by the optional cross-check tests.
+Python with `numpy`, `scipy`, `h5py` and `matplotlib`.
+The notebooks also use `jupyterlab`, `jupytext` and `ipywidgets`.
+A DREAM install is not needed for reading, moments, or plotting.
+It is used only by the optional cross-check tests.
+
+The project venv is `.venv` in this folder, separate from the `DREAM-runs` venv the simulations use:
+
+```bash
+/opt/cray/pe/python/3.11.7/bin/python -m venv .venv
+.venv/bin/python -m pip install numpy scipy h5py matplotlib pytest jupyterlab jupytext ipywidgets tomli-w
+```
+
+## Layout
+
+| Path | Contents |
+|---|---|
+| `cdo/` | The package: reading, physics, figures. |
+| `notebooks/` | `# %%` cell scripts that open as notebooks in JupyterLab. |
+| `scripts/plot_all_runs.py` | Batch command line: every run of every campaign. |
+| `tests/` | `pytest` suite. |
+| `docs/` | Field schema, volume and moment conventions. |
+| `plots/` | Figure output, not tracked. Older figures are in `plots/archive/`. |
 
 ## The package
 
 | Module | Purpose |
 |---|---|
+| `cdo.figures` | The standard figure set of a run, by name. `make_figures`, `build`, `names`, `compare`. |
+| `cdo.selection` | `Selection`: times, radii (r/a) and momentum ranges, separately for fluid and kinetic quantities. |
+| `cdo.picker` | `pick_runs()`: a run chooser, a multi-select box in Jupyter. |
+| `cdo.derived` | Cell volumes, radial integrals and averages, ions, and `rate_channels`. |
 | `cdo.schema` | Canonical field names, the path alias table, and the `Resolver` that reads them. See `docs/schema.md`. |
 | `cdo.io` | Output file discovery, and `add_dream_to_path` for the optional cross-check. |
 | `cdo.concat` | `Run`, a run concatenated across its files, read lazily by canonical name. |
 | `cdo.moments` | Currents and angle-averaged distribution moments, computed from the HDF5 file. |
-| `cdo.derived` | Cell volumes, radial integrals, and ions addressed by name. |
-| `cdo.energy` | Runaway energy-space transform, `dn/dp` to `dn/dE`. |
-| `cdo.plotting` | `basic_1D`, `basic_2D`, style presets, distribution plots, time-index helpers. |
+| `cdo.energy` | Energy-space transform, `dn/dp` to `dn/dE`. |
+| `cdo.plotting` | Low-level plot helpers, style presets, colour-map masking, time-index helpers. |
 | `cdo.labels` | Axis and quantity labels. |
 
 Physics conventions, volumes, moments, and the momentum-to-energy transform, are in `docs/volumes-and-moments.md`.
 
-## Using the package
+## What the figures show
+
+Figures are named, and `cdo.figures.names(run, selection)` lists the ones a run can make.
+
+Fluid figures use `selection.fluid`:
+
+- `currents`: I_p, I_ohm, I_hot, I_RE and I_wall as separate curves.
+  I_hot is the hot-tail grid current above p_thr.
+  It carries most of the current during a thermal quench.
+  I_RE is the runaway current.
+- `<quantity>_traces`: against time at the chosen radii, with the volume average in black.
+- `<quantity>_profiles`: against radius at the chosen times.
+- `<quantity>_map`: over time and radius.
+- Quantities: temperature, electron, runaway and hot densities, ohmic, runaway, hot and total current densities, radiated power, Z_eff.
+- `electric_field_<r/a>` and `electric_field_average`: |E|, E_c,eff and E_c,tot, with |E|/E_c,eff on the right axis.
+- `electric_field_profiles`, `critical_field_ratio_map`.
+- `generation_rates` and `rate_map_<channel>`: see below.
+
+Kinetic figures use `selection.kinetic`, one file per grid, radius and range:
+
+- `f_<grid>_<r/a>[_<range>]`: momentum-pitch maps at the chosen times, or f(p) curves on an isotropic grid.
+- `dndp_<grid>_<r/a>[_<range>]`: pitch-integrated density per unit momentum.
+- `spectrum_<grid>_<r/a>[_<range>]`: density per unit kinetic energy, in m^-3 MeV^-1.
+
+Titles show the snapped values: r/a, r in metres, and times.
+Colour maps show missing data in white.
+On log scales, zero and negative values are white too, and positive values below the floor take the darkest colour.
+
+### Runaway rate channels
+
+`cdo.derived.rate_channels` reads the run settings and labels each channel:
+
+| Channel | Source | Meaning |
+|---|---|---|
+| net | `runawayRate` | Total dn_RE/dt over the last internal step, including losses. |
+| hot_flux | `gammaFhot` | Net flux out of the hot-tail grid across its p_max. In kinetic runs, Dreicer and hot-tail generation appear here together, with avalanche, Compton and tritium electrons born on the hot-tail grid. It can be negative. |
+| avalanche | `GammaAva * n_re`, or `n_re n_tot C(p_max,hot)` | A term with fluid avalanche. With kinetic RP and both grids, the n_RE term rebuilt from the RP source above the hot-tail grid. |
+| remainder | net minus terms | With the Boltzmann operator, the re-re knock-on source, which DREAM does not write out. Shown only when larger than 0.1% of the net rate. |
+| dreicer, compton, tritium, hottail | `gamma*` | Terms when that model is on. |
+| `*_estimate` | `gammaDreicer`, `GammaAva * n_re` | Fluid formulas DREAM writes regardless of the model. Not in the equations. Drawn dashed. |
+
+## Notebooks
+
+The notebooks are `# %%` scripts.
+JupyterLab opens them as notebooks through Jupytext, and saves edits back to the `.py` file.
+Outputs are not stored, so git sees only code changes.
+
+On the cluster, inside `tmux`:
+
+```bash
+cd /project/nr_dream002/CDO-plotting
+.venv/bin/jupyter lab --no-browser --port 8890
+```
+
+On the laptop:
+
+```bash
+ssh -N -L 8890:localhost:8890 <cluster-login-host>
+```
+
+Then open the `http://localhost:8890/?token=...` link that JupyterLab prints, and open a notebook with "Open With > Jupytext Notebook".
+
+| Notebook | Contents |
+|---|---|
+| `run_overview.py` | One run: choose it, set the selection, show single figures or save the whole set. |
+| `distributions.py` | One run, kinetic figures only. |
+| `compare_runs.py` | Overlays of currents and temperature for several runs, with optional time shifts and reference points. |
+| `drag_force.py` | Drag-force schematic from `Chandrasekar.csv`. |
+
+The notebooks also run top to bottom with `python notebooks/<name>.py`.
+`CDO_RUN`, `CDO_RUNS` and `CDO_OUT` then set the run(s) and the output folder.
 
 ```python
 import cdo
+from cdo import figures
+from cdo.selection import FluidSelection, KineticSelection, Selection
 
-run = cdo.Run.from_folder("/path/to/run/output")
-print(run.report())
-
-run.field("T_cold")            # concatenated (time, radius) temperature
-run.current("j_re")            # total runaway current in amperes
-run.angle_average("runaway", "density")   # dn/dp per radius
-run.radial_integral("n_re")    # total runaways over the plasma volume
-run.ion("Ar").mean_charge(run.field("n_i"))
-run.close()
+run = cdo.Run.from_folder("/path/to/run")
+sel = Selection(
+    fluid=FluidSelection(times_ms=[1, 10, "end"], radii=[0.0, 0.5]),
+    kinetic=KineticSelection(times_ms=[5, 30], radii=[0.2],
+                             ranges=[(None, None), (None, 5)], range_unit="MeV"),
+)
+figures.build(run, "currents", sel)
+figures.make_figures(run, sel, out="plots/test")   # PNGs + plot_settings.json
 ```
 
-`cdo.describe(path)` or `cdo.describe_run(folder)` reports which fields a file carries and why any are absent.
+## Batch figures
 
-## Running a figure script
-
-The scripts in `scripts/` are `# %%` cell scripts. Run them cell by cell in an editor, or top to bottom:
+`scripts/plot_all_runs.py` saves the figure set of every run in the campaigns of its `GROUPS`, with the selection in its `SELECTION`.
+It adds cross-run overlays per group and an `index.md`.
 
 ```bash
-CDO_DATA_FOLDER=/path/to/run/output CDO_OUTPUT_FOLDER=/path/to/figures \
-    python scripts/plot_main.py
+.venv/bin/python scripts/plot_all_runs.py                     # all groups -> ./plots
+.venv/bin/python scripts/plot_all_runs.py --group demo_jorek  # one group
+.venv/bin/python scripts/plot_all_runs.py --pdf               # PDF copies in each run's pdf/
 ```
 
-Leave `CDO_OUTPUT_FOLDER` unset to display the figures instead of saving them. `plot_main.py` covers currents, generation rates, temperature, current density, and the runaway distribution. `plot_distribution.py` plots the runaway energy spectrum. `plot_drag_force.py` draws the drag-force schematic from `Chandrasekar.csv`.
-
-`plot_all_runs.py` saves the full figure set of every run in the campaigns listed in its `GROUPS`, with cross-run current overlays per group and an `index.md`.
-Besides the figures above, it draws r-t colour-meshes of each runaway generation rate, the volume-averaged rates over time, and momentum-pitch distributions at snapshot times:
-
-```bash
-python scripts/plot_all_runs.py                     # all groups -> ./plots
-python scripts/plot_all_runs.py --group demo_jorek  # one group
-python scripts/plot_all_runs.py --pdf               # PDF copies in each run's pdf/
-```
-
-PNGs are written directly in each run folder, for previewing and comparing.
+PNGs are written directly in each run folder.
 PDFs are off by default.
+The first read of a run from the project file system can take minutes.
+Later reads come from the file cache and take seconds.
 
 ## Tests
 
 ```bash
-pytest tests/
+.venv/bin/python -m pytest tests/
 ```
 
-The cross-check tests compare the native moments and integrals against `DREAMOutput`. They run when DREAM is importable and skip otherwise:
+The notebook and batch tests run on a reference run under `/project/nr_dream002` and skip when it is absent.
+The cross-check tests compare the native moments and integrals against `DREAMOutput`.
+They run when DREAM is importable and skip otherwise:
 
 ```bash
-PYTHONPATH=/path/to/DREAM/py pytest tests/test_dream_crosscheck.py
+PYTHONPATH=/path/to/DREAM/py .venv/bin/python -m pytest tests/test_dream_crosscheck.py
 ```

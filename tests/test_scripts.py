@@ -1,9 +1,9 @@
-"""Smoke tests for the # %% scripts.
+"""Smoke tests for the notebooks and the batch script.
 
-Every script is compiled to catch syntax errors. The drag-force script needs
-only the bundled CSV and is run in full. The run-driven scripts are run only when
-the default data folder is present, and skipped otherwise, so the suite stays
-portable.
+Every file is compiled to catch syntax errors. The drag-force notebook needs
+only the bundled CSV and is run in full. The run-driven notebooks and the batch
+script run only when the reference run folder is present, and skip otherwise,
+so the suite stays portable.
 """
 
 import os
@@ -15,41 +15,60 @@ from pathlib import Path
 import pytest
 
 REPO = Path(__file__).resolve().parent.parent
+NOTEBOOKS = REPO / "notebooks"
 SCRIPTS = REPO / "scripts"
-DATA_FOLDER = Path.home() / "nr_dream002/DREAM-runs/output/iter_dthmode24_rp_commit-53d8afb"
+DATA_FOLDER = Path("/project/nr_dream002/DEMO_data_2026/runs/tauw_inf_iso_rp")
 
-ALL_SCRIPTS = ["plot_main.py", "plot_distribution.py", "plot_drag_force.py"]
+ALL_FILES = sorted(NOTEBOOKS.glob("*.py")) + sorted(SCRIPTS.glob("*.py"))
 
 
-def _run(script, env_extra, tmp_path):
+def _run(args, env_extra):
     env = dict(os.environ, MPLBACKEND="Agg", **env_extra)
-    return subprocess.run(
-        [sys.executable, str(SCRIPTS / script)],
-        env=env, capture_output=True, text=True, timeout=300,
-    )
+    return subprocess.run([sys.executable, *map(str, args)], cwd=REPO, env=env,
+                          capture_output=True, text=True, timeout=600)
 
 
-@pytest.mark.parametrize("script", ALL_SCRIPTS)
-def test_script_compiles(script):
-    py_compile.compile(str(SCRIPTS / script), doraise=True)
+def _need_data():
+    if not DATA_FOLDER.is_dir():
+        pytest.skip(f"reference data folder not present: {DATA_FOLDER}")
+
+
+@pytest.mark.parametrize("path", ALL_FILES, ids=lambda p: p.name)
+def test_file_compiles(path):
+    py_compile.compile(str(path), doraise=True)
 
 
 def test_drag_force_runs_and_saves(tmp_path):
     out = tmp_path / "drag.png"
-    result = _run("plot_drag_force.py", {"CDO_OUTPUT_FILE": str(out)}, tmp_path)
+    result = _run([NOTEBOOKS / "drag_force.py"], {"CDO_OUTPUT_FILE": str(out)})
     assert result.returncode == 0, result.stderr
     assert out.exists()
 
 
-@pytest.mark.parametrize("script", ["plot_main.py", "plot_distribution.py"])
-def test_run_driven_script(script, tmp_path):
-    if not DATA_FOLDER.is_dir():
-        pytest.skip(f"reference data folder not present: {DATA_FOLDER}")
+@pytest.mark.parametrize("notebook", ["run_overview.py", "distributions.py"])
+def test_run_notebook_saves_figures(notebook, tmp_path):
+    _need_data()
     out = tmp_path / "figs"
-    result = _run(
-        script,
-        {"CDO_DATA_FOLDER": str(DATA_FOLDER), "CDO_OUTPUT_FOLDER": str(out)},
-        tmp_path,
-    )
+    result = _run([NOTEBOOKS / notebook], {"CDO_RUN": str(DATA_FOLDER), "CDO_OUT": str(out)})
     assert result.returncode == 0, result.stderr
-    assert any(out.rglob("*.png"))
+    assert any(out.glob("*.png"))
+    assert (out / "plot_settings.json").exists()
+
+
+def test_compare_notebook_saves_figures(tmp_path):
+    _need_data()
+    out = tmp_path / "cmp"
+    runs = f"{DATA_FOLDER}:{DATA_FOLDER.parent / 'tauw_50ms_iso'}"
+    result = _run([NOTEBOOKS / "compare_runs.py"], {"CDO_RUNS": runs, "CDO_OUT": str(out)})
+    assert result.returncode == 0, result.stderr
+    assert (out / "compare_plasma_current.png").exists()
+
+
+def test_batch_script_one_run(tmp_path):
+    _need_data()
+    result = _run([SCRIPTS / "plot_all_runs.py", "--runs-root", DATA_FOLDER.parent,
+                   "--glob", DATA_FOLDER.name, "--out", tmp_path, "--no-compare"], {})
+    assert result.returncode == 0, result.stderr
+    run_dir = tmp_path / DATA_FOLDER.parent.name / DATA_FOLDER.name
+    assert (run_dir / "currents.png").exists()
+    assert not (run_dir / "pdf").exists()  # PDFs are opt-in

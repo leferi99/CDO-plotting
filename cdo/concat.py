@@ -68,6 +68,14 @@ class Run:
             raise FileNotFoundError(f"no output files in {folder}")
         return cls(files, **kwargs)
 
+    def drop_cache(self):
+        """Forget the concatenated fields read so far, to free memory.
+
+        The distribution functions of a long run take gigabytes. Fields are
+        read again on the next access.
+        """
+        self._cache.clear()
+
     def close(self):
         for handle in self._handles:
             handle.close()

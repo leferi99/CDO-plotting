@@ -14,6 +14,9 @@ from .io import (
 )
 from .moments import MomentumMoments, current
 from . import plotting
+from . import figures, selection
+from .picker import pick_runs
+from .selection import FluidSelection, KineticSelection, Selection
 from .schema import (
     DuplicatePathWarning,
     FIELDS,
@@ -27,6 +30,12 @@ __all__ = [
     "DuplicatePathWarning",
     "EnergyGrid",
     "FIELDS",
+    "FluidSelection",
+    "KineticSelection",
+    "Selection",
+    "figures",
+    "pick_runs",
+    "selection",
     "InconsistentRunWarning",
     "IonSpecies",
     "MissingFieldError",
