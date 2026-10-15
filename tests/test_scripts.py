@@ -17,7 +17,10 @@ import pytest
 REPO = Path(__file__).resolve().parent.parent
 NOTEBOOKS = REPO / "notebooks"
 SCRIPTS = REPO / "scripts"
-DATA_FOLDER = Path("/project/nr_dream002/DEMO_data_2026/runs/tauw_inf_iso_rp")
+sys.path.insert(0, str(REPO))
+from cdo import paths  # noqa: E402
+
+DATA_FOLDER = paths.run_folder("demo_jorek", "tauw_inf_iso_rp")
 
 ALL_FILES = sorted(NOTEBOOKS.glob("*.py")) + sorted(SCRIPTS.glob("*.py"))
 

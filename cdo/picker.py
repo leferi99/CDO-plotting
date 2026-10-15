@@ -21,13 +21,8 @@ from pathlib import Path
 import h5py
 
 from .io import find_outputs
+from . import paths
 from .schema import decode_string
-
-#: Where the runs of this project live.
-DEFAULT_ROOTS = (
-    Path("/project/nr_dream002/DREAM-runs/output"),
-    Path("/project/nr_dream002/DEMO_data_2026/runs"),
-)
 
 #: Avalanche modes of DREAM's RunawayElectrons settings.
 AVALANCHE = {1: "none", 2: "fluid", 3: "fluid-hesslow", 4: "kinetic-RP",
@@ -84,10 +79,16 @@ def _info(folder: Path) -> RunInfo | None:
     return RunInfo(folder, len(files), t_end * 1e3, commit, avalanche, unfinished)
 
 
-def survey_runs(roots=DEFAULT_ROOTS, globs=("*",)) -> list[RunInfo]:
-    """Run folders with at least one committed output, sorted by root then name."""
+def survey_runs(roots=None, globs=("*",)) -> list[RunInfo]:
+    """Run folders with at least one committed output, sorted by root then name.
+
+    ``roots`` defaults to the collections under the data root, see
+    :mod:`cdo.paths`. Roots that do not exist are skipped.
+    """
     infos = []
-    for root in map(Path, roots):
+    for root in map(Path, roots or paths.run_roots()):
+        if not root.is_dir():
+            continue
         folders = sorted({f for g in globs for f in root.glob(g) if f.is_dir()})
         for folder in folders:
             info = _info(folder)
@@ -201,9 +202,11 @@ class RunPicker:
         return self
 
 
-def pick_runs(roots=DEFAULT_ROOTS, globs=("*",), *, multiple: bool = True) -> RunPicker:
+def pick_runs(roots=None, globs=("*",), *, multiple: bool = True) -> RunPicker:
     """Show the runs under ``roots`` for choosing. Read the choice from ``.selected``.
 
-    ``multiple=False`` allows exactly one run, for the single-run notebooks.
+    ``roots`` defaults to the collections under the data root (``CDO_DATA_ROOT``,
+    see :mod:`cdo.paths`). ``multiple=False`` allows exactly one run, for the
+    single-run notebooks.
     """
     return RunPicker(survey_runs(roots, globs), multiple=multiple).show()

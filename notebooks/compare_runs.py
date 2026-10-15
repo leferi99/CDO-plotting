@@ -31,11 +31,10 @@ cdo.plotting.use_base_style(fontsize=11)
 picker = cdo.pick_runs()
 
 # %%
-DEFAULT_RUNS = os.environ.get(
-    "CDO_RUNS",
-    "/project/nr_dream002/DREAM-runs/output/iter_dthmode24_rp_boltzmann-eqterm:"
-    "/project/nr_dream002/DREAM-runs/output/iter_dthmode24_boltzmann_boltzmann-eqterm",
-).split(":")
+DEFAULT_RUNS = os.environ.get("CDO_RUNS", "").split(":") if os.environ.get("CDO_RUNS") else [
+    cdo.paths.run_folder("dream_runs", "iter_dthmode24_rp_boltzmann-eqterm"),
+    cdo.paths.run_folder("dream_runs", "iter_dthmode24_boltzmann_boltzmann-eqterm"),
+]
 RUNS = picker.selected or [Path(p) for p in DEFAULT_RUNS]
 if not picker.selected:
     print("No runs ticked in the picker, using DEFAULT_RUNS. Tick runs and re-run this cell.")

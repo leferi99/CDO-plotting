@@ -18,12 +18,12 @@ pytest.importorskip("DREAM")
 
 from DREAM.DREAMOutput import DREAMOutput  # noqa: E402
 
+from cdo import paths  # noqa: E402
 from cdo.concat import Run  # noqa: E402
 
 REFERENCE_FILES = [
     os.path.join(os.path.dirname(__file__), "..", "output_7_.h5"),
-    "/home/nr_drlf/nr_dream002/DREAM-runs/output/"
-    "iter_dthmode24_rp_commit-53d8afb/output_0000.h5",
+    str(paths.run_folder("dream_runs", "iter_dthmode24_rp_commit-53d8afb") / "output_0000.h5"),
 ]
 
 AVAILABLE = [p for p in REFERENCE_FILES if os.path.exists(p)]

@@ -14,7 +14,7 @@ from .io import (
 )
 from .moments import MomentumMoments, current
 from . import plotting
-from . import figures, selection
+from . import figures, paths, selection
 from .picker import pick_runs
 from .selection import FluidSelection, KineticSelection, Selection
 from .schema import (
@@ -34,6 +34,7 @@ __all__ = [
     "KineticSelection",
     "Selection",
     "figures",
+    "paths",
     "pick_runs",
     "selection",
     "InconsistentRunWarning",

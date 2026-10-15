@@ -29,13 +29,45 @@ The project venv is `.venv` in this folder, separate from the `DREAM-runs` venv 
 | `docs/` | Field schema, volume and moment conventions. |
 | `plots/` | Figure output, not tracked. Older figures are in `plots/archive/`. |
 
+## Data location
+
+All run folders sit under one data root, with the same layout on every machine:
+
+| Folder under the root | Runs |
+|---|---|
+| `DREAM-runs/output/` | ITER DThmode24 and DEMO_2026 runs |
+| `DEMO_data_2026/runs/` | DEMO JOREK current-quench runs |
+
+On the cluster the root is `/project/nr_dream002`, used when nothing is set.
+Elsewhere, set `CDO_DATA_ROOT` to the root of a synced copy, for example in fish:
+
+```fish
+set -Ux CDO_DATA_ROOT ~/Data/DREAM
+```
+
+The plotting reads only the committed legs, `output_NNNN.h5`, and each run's `manifest.json`.
+These rsync commands copy just those, about 6 GB, and on later runs only new legs:
+
+```bash
+rsync -avH --prune-empty-dirs --exclude='archive_*/' --exclude='*.inprogress.h5' \
+    --include='*/' --include='output_[0-9]*.h5' --include='manifest.json' --exclude='*' \
+    komondor-2026:/project/nr_dream002/DREAM-runs/output/ ~/Data/DREAM/DREAM-runs/output/
+rsync -avH --prune-empty-dirs --exclude='*.inprogress.h5' \
+    --include='*/' --include='output_[0-9]*.h5' --include='manifest.json' --exclude='*' \
+    komondor-2026:/project/nr_dream002/DEMO_data_2026/runs/ ~/Data/DREAM/DEMO_data_2026/runs/
+```
+
+`cdo.paths` resolves the root and the collection folders.
+The run picker, the notebook defaults and the batch script all go through it.
+
 ## The package
 
 | Module | Purpose |
 |---|---|
 | `cdo.figures` | The standard figure set of a run, by name. `make_figures`, `build`, `names`, `compare`. |
 | `cdo.selection` | `Selection`: times, radii (r/a) and momentum ranges, separately for fluid and kinetic quantities. |
-| `cdo.picker` | `pick_runs()`: a run chooser, a multi-select box in Jupyter. |
+| `cdo.picker` | `pick_runs()`: a run chooser, checkboxes or a single-choice list in Jupyter. |
+| `cdo.paths` | The data root (`CDO_DATA_ROOT`) and the run collection folders. |
 | `cdo.derived` | Cell volumes, radial integrals and averages, ions, and `rate_channels`. |
 | `cdo.schema` | Canonical field names, the path alias table, and the `Resolver` that reads them. See `docs/schema.md`. |
 | `cdo.io` | Output file discovery, and `add_dream_to_path` for the optional cross-check. |
@@ -162,7 +194,7 @@ Later reads come from the file cache and take seconds.
 .venv/bin/python -m pytest tests/
 ```
 
-The notebook and batch tests run on a reference run under `/project/nr_dream002` and skip when it is absent.
+The notebook and batch tests run on a reference run under the data root and skip when it is absent.
 The cross-check tests compare the native moments and integrals against `DREAMOutput`.
 They run when DREAM is importable and skip otherwise:
 
