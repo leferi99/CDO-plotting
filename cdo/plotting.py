@@ -108,6 +108,30 @@ def _finish(fig, folder, savename, dpi=150):
     return fig
 
 
+def masked_cmap(cmap=None, under=True):
+    """A colormap that shows missing data in white.
+
+    Masked and non-finite cells take the "bad" colour, white. With ``under``,
+    values below the colour floor take the darkest colour of the map, so a
+    small value still looks different from a missing one. Pair it with
+    ``extend="min"`` on the colour bar.
+    """
+    if cmap is None:
+        cmap = plt.colormaps["inferno"]
+    elif isinstance(cmap, str):
+        cmap = plt.colormaps[cmap]
+    extremes = {"bad": "white"}
+    if under:
+        extremes["under"] = cmap(0.0)
+    return cmap.with_extremes(**extremes)
+
+
+def mask_for_log(data):
+    """Mask the cells a log colour scale cannot show: missing, zero and negative."""
+    data = np.asarray(data, dtype=float)
+    return np.ma.masked_where(~np.isfinite(data) | (data <= 0), data)
+
+
 def basic_1D(
     ydata,
     xdata,
@@ -199,27 +223,36 @@ def basic_2D(
 
     ``normalization`` is ``lin``, ``log`` or ``symlog``. For ``log`` the colour
     range spans ``logdiff`` decades below the maximum. For ``symlog`` the range
-    is symmetric about zero with a linear band of half-width ``linthresh``. Data
-    is not modified in place: non-finite entries are zeroed on a copy.
+    is symmetric about zero with a linear band of half-width ``linthresh``. The
+    input is not modified.
 
     ``mesh`` draws a ``pcolormesh`` with nearest shading instead of contours,
     so each cell keeps its own value on a non-uniform grid. ``levels`` is then
-    ignored. Cells below the log floor, zero and negative ones included, are
-    left transparent over the black axes background.
+    ignored.
+
+    Missing (non-finite) cells are white. On a log scale zero and negative
+    cells are white too, and positive values below the floor take the darkest
+    colour, marked by the arrow at the bottom of the colour bar.
     """
     data = np.array(data, dtype=float)
-    data[~np.isfinite(data)] = 0.0
+    finite = data[np.isfinite(data)]
+    if finite.size == 0:
+        raise ValueError("no finite values to plot")
 
-    if data.max() < 0 and datamax is None:
+    if finite.max() < 0 and datamax is None:
         normalization = "symlog"
     if datamax is None:
-        datamax = data.max()
+        datamax = finite.max()
     if datamin is None:
-        datamin = data.min()
+        datamin = finite.min()
+    if normalization == "lin" and datamax <= datamin:
+        # A constant field still needs a colour range to draw.
+        pad = abs(datamax) * 0.01 or 1.0
+        datamin, datamax = datamin - pad, datamax + pad
     if levels is None:
         levels = 11
-    if cmap is None:
-        cmap = plt.colormaps["inferno"]
+    cmap = masked_cmap(cmap)
+    missing_masked = np.ma.masked_invalid(data)
 
     fig = plt.figure(figsize=figsize)
     axes = plt.subplot(1, 1, 1)
@@ -231,41 +264,43 @@ def basic_2D(
         logmin = logmax - logdiff
         norm = colors.LogNorm(vmin=10**logmin, vmax=datamax)
         if mesh:
-            plot = axes.pcolormesh(xgrid, ygrid, np.ma.masked_less(data, 10**logmin),
+            plot = axes.pcolormesh(xgrid, ygrid, mask_for_log(data),
                                    norm=norm, cmap=cmap, shading="nearest")
         else:
             contour_levels = np.logspace(logmin, logmax, levels)
-            plot = axes.contourf(xgrid, ygrid, data, levels=contour_levels, norm=norm,
-                                 cmap=cmap)
+            plot = axes.contourf(xgrid, ygrid, mask_for_log(data), levels=contour_levels,
+                                 norm=norm, cmap=cmap, extend="min")
         decade_ticks = np.power(10.0, np.arange(math.ceil(logmin), logmax + 1))
-        cbar = fig.colorbar(plot, ax=axes, ticks=decade_ticks)
+        cbar = fig.colorbar(plot, ax=axes, ticks=decade_ticks, extend="min")
         cbar.formatter = ticker.LogFormatterExponent(base=10)
         cbar.update_ticks()
     elif normalization == "lin":
         if mesh:
-            plot = axes.pcolormesh(xgrid, ygrid, data, cmap=cmap, vmin=datamin,
+            plot = axes.pcolormesh(xgrid, ygrid, missing_masked, cmap=cmap, vmin=datamin,
                                    vmax=datamax, shading="nearest")
         else:
             contour_levels = np.linspace(datamin, datamax, levels)
-            plot = axes.contourf(xgrid, ygrid, data, levels=contour_levels, cmap=cmap,
-                                 vmin=datamin, vmax=datamax)
+            plot = axes.contourf(xgrid, ygrid, missing_masked, levels=contour_levels,
+                                 cmap=cmap, vmin=datamin, vmax=datamax)
         cbar = fig.colorbar(plot, ax=axes)
     elif normalization == "symlog":
+        # Signed data: negative values carry meaning, only missing cells are white.
         if mesh:
             bound = max(abs(datamax), abs(datamin))
             norm = colors.SymLogNorm(linthresh=linthresh, vmin=-bound, vmax=bound)
-            plot = axes.pcolormesh(xgrid, ygrid, data, norm=norm,
-                                   cmap=plt.colormaps["RdBu_r"], shading="nearest")
+            plot = axes.pcolormesh(xgrid, ygrid, missing_masked, norm=norm,
+                                   cmap=masked_cmap("RdBu_r", under=False),
+                                   shading="nearest")
             cbar = fig.colorbar(plot, ax=axes, ticks=symlog_ticks(linthresh, bound))
         else:
             norm = colors.SymLogNorm(linthresh=linthresh)
-            plot = axes.contourf(xgrid, ygrid, data, levels=levels, norm=norm,
-                                 cmap=plt.colormaps["RdBu"], vmin=-datamax, vmax=datamax)
+            plot = axes.contourf(xgrid, ygrid, missing_masked, levels=levels, norm=norm,
+                                 cmap=masked_cmap("RdBu", under=False),
+                                 vmin=-datamax, vmax=datamax)
             cbar = fig.colorbar(plot, ax=axes)
     else:
         raise ValueError(f"unknown normalization '{normalization}'")
 
-    axes.set_facecolor("black")
     cbar.set_label(cbarlabel)
     axes.set_ylim(ylim)
     axes.set_xlabel(xlabel)
@@ -363,7 +398,7 @@ def distribution_momentum_2D(
     timestep=0,
     radial_cell=0,
     figsize=(8, 5),
-    momentum_range=(0, -1),
+    momentum_range=(0, None),
     ylim=(None, None),
     xlabel=None,
     ylabel=None,
@@ -386,15 +421,15 @@ def distribution_momentum_2D(
 
     p_edges = run.reference.read(f"{'hot' if grid == 'hottail' else 're'}_p_edges")
     xi_deg_edges = _pitch_degrees_edges(run, grid)
-    vmin = max(data.min(), 1.0)
+    vmin = max(np.nanmin(data), 1.0)
+    edges = p_edges[lo:None if hi is None else hi + 1]
 
     fig = plt.figure(figsize=figsize)
     axes = plt.subplot(1, 1, 1)
-    mesh = axes.pcolormesh(p_edges[lo:hi], xi_deg_edges, data,
-                           norm=colors.LogNorm(vmin=vmin, vmax=data.max()))
-    axes.set_facecolor("black")
+    mesh = axes.pcolormesh(edges, xi_deg_edges, mask_for_log(data), cmap=masked_cmap(),
+                           norm=colors.LogNorm(vmin=vmin, vmax=np.nanmax(data)))
     axes.set_ylim(ylim)
-    cbar = fig.colorbar(mesh, ax=axes)
+    cbar = fig.colorbar(mesh, ax=axes, extend="min")
     cbar.set_label(cbarlabel)
     axes.set_xlabel(xlabel or r"Momentum normalized to $m_e c$")
     axes.set_ylabel(ylabel or "Pitch angle [degrees]")
@@ -423,8 +458,8 @@ def distribution_momentum_panels(
     One panel per entry of ``timesteps``, laid out in a grid with shared axes
     and one shared logarithmic colour scale, so the panels read as a time
     sequence. The scale tops out at the largest value over the chosen steps and
-    spans ``decades`` below it. Cells below that floor, negative ones included,
-    show as the black background.
+    spans ``decades`` below it. Positive values below that floor take the
+    darkest colour. Zero, negative and missing cells are white.
     """
     prefix = "hot" if grid == "hottail" else "re"
     f = run.field("f_hot" if grid == "hottail" else "f_re")
@@ -446,9 +481,8 @@ def distribution_momentum_panels(
         figsize=(panel_size[0] * ncols + 1.2, panel_size[1] * nrows + 0.6),
     )
     for ax, i, data in zip(axes.flat, timesteps, frames):
-        mesh = ax.pcolormesh(p_edges, xi_deg_edges,
-                             np.ma.masked_less(data, norm.vmin), norm=norm)
-        ax.set_facecolor("black")
+        mesh = ax.pcolormesh(p_edges, xi_deg_edges, mask_for_log(data),
+                             norm=norm, cmap=masked_cmap())
         ax.set_title(f"t = {time_label(t_ms, i)}", fontsize="small")
     for ax in axes.flat[n:]:
         ax.set_visible(False)
@@ -456,7 +490,7 @@ def distribution_momentum_panels(
         ax.set_xlabel(r"$p$ [$m_e c$]", fontsize="small")
     for ax in axes[:, 0]:
         ax.set_ylabel("Pitch angle [deg]", fontsize="small")
-    cbar = fig.colorbar(mesh, ax=axes, shrink=0.9)
+    cbar = fig.colorbar(mesh, ax=axes, shrink=0.9, extend="min")
     cbar.set_label(cbarlabel)
     if suptitle is None:
         suptitle = f"{grid} grid, r = {run.radialgrid[radial_cell]:.2f} m"
@@ -472,7 +506,7 @@ def angle_averaged_momentum_1D(
     timestep=0,
     radial_cell=0,
     figsize=FS_1D_DISTRIBUTION,
-    momentum_range=(0, -1),
+    momentum_range=(0, None),
     xlabel=None,
     ylabel=None,
     title=None,

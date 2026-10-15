@@ -152,5 +152,14 @@ def generation_rates(run, floor: float = 1e-12) -> dict[str, np.ndarray]:
 
 
 def volume_average(field: np.ndarray, volumes: np.ndarray) -> np.ndarray:
-    """Volume-weighted mean over radius, the last axis, ignoring NaN cells."""
-    return np.nansum(field * volumes, axis=-1) / np.sum(volumes)
+    """Volume-weighted mean over radius, the last axis, ignoring NaN cells.
+
+    NaN cells drop out of both the sum and the total volume, so a missing cell
+    does not pull the mean towards zero. A time step with no finite cell is NaN.
+    """
+    finite = np.isfinite(field)
+    weights = np.where(finite, volumes, 0.0)
+    total = np.sum(weights, axis=-1)
+    weighted = np.sum(np.where(finite, field, 0.0) * weights, axis=-1)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        return np.where(total > 0, weighted / np.where(total > 0, total, 1.0), np.nan)

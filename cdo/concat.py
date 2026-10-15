@@ -23,7 +23,7 @@ import numpy as np
 from . import derived
 from .io import find_outputs, open_output
 from .moments import MomentumMoments, current
-from .schema import FIELDS, Presence, Resolver, TimeAxis
+from .schema import FIELDS, Presence, Resolver, TimeAxis, decode_string
 
 
 class InconsistentRunWarning(UserWarning):
@@ -220,6 +220,25 @@ class Run:
     @property
     def ohmic_current(self) -> np.ndarray | None:
         return self.current("j_ohm")
+
+    def setting(self, path: str, *, leg: int = -1):
+        """A value of the settings DREAM ran with, or ``None`` when absent.
+
+        ``path`` is relative to the ``settings/`` group, for example
+        ``"eqsys/n_re/avalanche"``. Settings can change between legs (the
+        avalanche cutoff does every leg), so ``leg`` picks the output file,
+        the last one by default. Scalars come back as Python numbers, text as
+        ``str``, everything else as an array.
+        """
+        handle = self._handles[leg]
+        full = f"settings/{path}"
+        if full not in handle or not hasattr(handle[full], "dtype"):
+            return None
+        dataset = handle[full]
+        if dataset.dtype.kind == "S":
+            return decode_string(dataset)
+        value = np.asarray(dataset[()])
+        return value.ravel()[0].item() if value.size == 1 else value
 
     # --- momentum-grid moments ---------------------------------------------
 

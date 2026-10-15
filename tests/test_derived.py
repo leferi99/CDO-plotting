@@ -108,4 +108,5 @@ def test_generation_rates_builds_avalanche_and_drops_negligible_channels():
 def test_volume_average_weights_by_cell_volume():
     field = np.array([[1.0, 3.0], [2.0, np.nan]])
     volumes = np.array([1.0, 3.0])
-    assert volume_average(field, volumes) == pytest.approx([2.5, 0.5])
+    # The NaN cell drops out of the total volume, so the second step is 2.0.
+    assert volume_average(field, volumes) == pytest.approx([2.5, 2.0])
