@@ -272,7 +272,7 @@ def basic_2D(
                                  norm=norm, cmap=cmap, extend="min")
         decade_ticks = np.power(10.0, np.arange(math.ceil(logmin), logmax + 1))
         cbar = fig.colorbar(plot, ax=axes, ticks=decade_ticks, extend="min")
-        cbar.formatter = ticker.LogFormatterExponent(base=10)
+        cbar.formatter = ticker.LogFormatterSciNotation(base=10)
         cbar.update_ticks()
     elif normalization == "lin":
         if mesh:

@@ -109,25 +109,23 @@ def test_major_radius_reachable_in_both_layouts(old, new):
         assert r.resolved_path["major_radius"] == expected_source
 
 
-def test_rename_is_followed(old, new):
-    for path, expected_source in (
-        (old, "other/fluid/gammaHottail"),
-        (new, "other/fluid/gammaFhot"),
-    ):
-        r = open_resolver(path)
-        assert r.read("gammaHottail").shape == (NT - 1, NR)
-        assert r.resolved_path["gammaHottail"] == expected_source
+def test_hot_flux_and_analytic_hottail_are_separate_fields(old, new):
+    # gammaFhot and gammaHottail are different DREAM quantities, so neither
+    # stands in for the other.
+    r_old, r_new = open_resolver(old), open_resolver(new)
+    assert r_old.read("gammaHottail").shape == (NT - 1, NR)
+    assert r_old.read("gammaFhot") is None
+    assert r_new.read("gammaFhot").shape == (NT - 1, NR)
+    assert r_new.read("gammaHottail") is None
 
 
 def test_relocated_reports_non_primary_paths(old):
     r = open_resolver(old)
     r.read("major_radius")
-    r.read("gammaHottail")
     r.read("minor_radius")
     assert r.relocated() == {
         "major_radius": "settings/radialgrid/R0",
         "minor_radius": "settings/radialgrid/a",
-        "gammaHottail": "other/fluid/gammaHottail",
     }
 
 
@@ -224,7 +222,7 @@ def test_single_path_present_never_warns(new):
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         r.read("major_radius")
-        r.read("gammaHottail")
+        r.read("gammaFhot")
     assert r.conflicts == {}
 
 

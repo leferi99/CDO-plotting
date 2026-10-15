@@ -6,22 +6,26 @@ import pytest
 from cdo.derived import (
     IonSpecies,
     cell_volumes,
-    flux_to_re,
-    generation_rates,
     parse_ions,
     radial_integral,
+    rate_channels,
+    rp_avalanche_coefficient,
     volume_average,
 )
 
 
 class FakeRun:
-    """Serves named (time, radius) fields, None for the rest."""
+    """Serves named (time, radius) fields and settings, None for the rest."""
 
-    def __init__(self, **fields):
+    def __init__(self, settings=None, **fields):
         self.fields = fields
+        self.settings = settings or {}
 
     def field(self, name):
         return self.fields.get(name)
+
+    def setting(self, path):
+        return self.settings.get(path)
 
 
 def test_cell_volume_is_vpvol_dr_r0():
@@ -77,32 +81,67 @@ def test_mean_charge_zero_where_species_absent():
     assert mean[0, 1] == 0.0  # no divide-by-zero, no NaN
 
 
-def test_flux_to_re_subtracts_known_sources():
-    shape = (2, 3)
-    rate = np.full(shape, 10.0)
-    n_re = np.full(shape, 1.0)
-    ava = np.full(shape, 2.0)
-    trit = np.full(shape, 1.0)
-    compton = np.full(shape, 1.0)
-    # 10 - 1*2 - 1 - 1 = 6
-    assert flux_to_re(rate, n_re, ava, trit, compton) == pytest.approx(
-        np.full(shape, 6.0)
-    )
+KINETIC_RP = {"hottailgrid/enabled": 1, "runawaygrid/enabled": 1,
+              "eqsys/n_re/avalanche": 4, "eqsys/n_re/dreicer": 1,
+              "hottailgrid/pmax": 2.5}
 
 
-def test_generation_rates_builds_avalanche_and_drops_negligible_channels():
+def test_rate_channels_fluid_avalanche_is_a_term():
     shape = (2, 3)
     run = FakeRun(
-        runawayRate=np.full(shape, 1e18),
-        gammaHottail=np.full(shape, 1e18),
-        gammaDreicer=np.full(shape, 1e-29),
-        gammaTritium=np.zeros(shape),
+        settings={"eqsys/n_re/avalanche": 3, "eqsys/n_re/dreicer": 1},
+        runawayRate=np.full(shape, 1e17),
         GammaAva=np.full(shape, 100.0),
         n_re=np.full(shape, 1e15),
+        gammaDreicer=np.full(shape, 1e-29),
     )
-    rates = generation_rates(run)
-    assert list(rates) == ["total", "hottail_flux", "avalanche"]
-    assert rates["avalanche"] == pytest.approx(np.full(shape, 1e17))
+    channels = {c.key: c for c in rate_channels(run)}
+    assert channels["avalanche"].kind == "term"
+    assert channels["avalanche"].values == pytest.approx(np.full(shape, 1e17))
+    # The Dreicer estimate is negligible and dropped, the remainder is zero.
+    assert set(channels) == {"net", "avalanche"}
+
+
+def test_rate_channels_kinetic_rp_reconstructs_avalanche_and_flags_estimates():
+    shape = (2, 3)
+    n_re, n_tot = np.full(shape, 1e15), np.full(shape, 1e20)
+    ava = n_re * n_tot * rp_avalanche_coefficient(2.5)
+    flux = np.full(shape, 1e18)
+    run = FakeRun(
+        settings=KINETIC_RP,
+        runawayRate=flux + ava,
+        gammaFhot=flux,
+        GammaAva=np.full(shape, 100.0),
+        gammaDreicer=np.full(shape, 1e16),
+        n_re=n_re, n_tot=n_tot,
+    )
+    channels = {c.key: c for c in rate_channels(run)}
+    assert channels["hot_flux"].kind == "term"
+    assert "avalanche electrons born on the hot grid" in channels["hot_flux"].note
+    assert channels["avalanche"].values == pytest.approx(ava)
+    assert channels["dreicer_estimate"].kind == "estimate"
+    # Net equals flux plus avalanche, so no remainder is shown.
+    assert "remainder" not in channels
+
+
+def test_rate_channels_boltzmann_remainder_is_the_knock_on_source():
+    shape = (2, 3)
+    run = FakeRun(
+        settings={**KINETIC_RP, "eqsys/n_re/avalanche": 5},
+        runawayRate=np.full(shape, 1.1e18),
+        gammaFhot=np.full(shape, 1e18),
+        n_re=np.full(shape, 1e15),
+    )
+    channels = {c.key: c for c in rate_channels(run)}
+    assert channels["remainder"].values == pytest.approx(np.full(shape, 1e17))
+    assert "knock-on" in channels["remainder"].label
+
+
+def test_rate_channels_skips_disabled_compton():
+    shape = (2, 3)
+    run = FakeRun(settings={"eqsys/n_re/compton/mode": 1},
+                  runawayRate=np.ones(shape), gammaCompton=np.ones(shape))
+    assert [c.key for c in rate_channels(run)] == ["net"]
 
 
 def test_volume_average_weights_by_cell_volume():

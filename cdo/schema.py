@@ -185,15 +185,18 @@ FIELDS: dict[str, Field] = {
     "gammaCompton": _fluid("other/fluid/gammaCompton", unit="1/(s m$^3$)"),
     "gammaDreicer": _fluid("other/fluid/gammaDreicer", unit="1/(s m$^3$)"),
     "gammaTritium": _fluid("other/fluid/gammaTritium", unit="1/(s m$^3$)"),
-    "gammaHottail": _fluid(
-        "other/fluid/gammaFhot",
-        "other/fluid/gammaHottail",
-        unit="1/(s m$^3$)",
-        note=(
-            "gammaHottail is an unconfirmed alias, kept as a fallback. No "
-            "available file carries it, so the rename is not evidenced."
-        ),
+    # Two different DREAM quantities, not a rename: gammaFhot is the kinetic
+    # particle flux out of the hot-tail grid, gammaHottail the analytic
+    # (fluid) hot-tail generation rate.
+    "gammaFhot": _fluid(
+        "other/fluid/gammaFhot", unit="1/(s m$^3$)",
+        note="Net flux of f_hot across p_max of the hot-tail grid, all origins.",
     ),
+    "gammaHottail": _fluid(
+        "other/fluid/gammaHottail", unit="1/(s m$^3$)",
+        note="Analytic hot-tail rate, only with f_hot mode 2 and hottail 3.",
+    ),
+    "gammaLCFSLoss": _fluid("other/fluid/gammaLCFSLoss", unit="1/(s m$^3$)"),
     "runawayRate": _fluid("other/fluid/runawayRate", unit="1/(s m$^3$)"),
     # --- other/fluid, energy balance ---------------------------------------
     "Tcold_ohmic": _fluid("other/fluid/Tcold_ohmic", unit="J/(s m$^3$)"),
