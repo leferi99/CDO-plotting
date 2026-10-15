@@ -2,6 +2,10 @@
 # jupyter:
 #   jupytext:
 #     formats: py:percent
+#   kernelspec:
+#     display_name: Python 3 (ipykernel)
+#     language: python
+#     name: python3
 # ---
 
 # %% [markdown]
@@ -33,6 +37,8 @@ DEFAULT_RUNS = os.environ.get(
     "/project/nr_dream002/DREAM-runs/output/iter_dthmode24_boltzmann_boltzmann-eqterm",
 ).split(":")
 RUNS = picker.selected or [Path(p) for p in DEFAULT_RUNS]
+if not picker.selected:
+    print("No runs ticked in the picker, using DEFAULT_RUNS. Tick runs and re-run this cell.")
 runs = {Path(folder).name: cdo.Run.from_folder(folder) for folder in RUNS}
 for label, run in runs.items():
     print(f"{label}: {run.timegrid_ms[-1]:.4g} ms, {len(run.files)} legs")

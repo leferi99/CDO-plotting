@@ -2,6 +2,10 @@
 # jupyter:
 #   jupytext:
 #     formats: py:percent
+#   kernelspec:
+#     display_name: Python 3 (ipykernel)
+#     language: python
+#     name: python3
 # ---
 
 # %% [markdown]
@@ -42,6 +46,8 @@ picker = cdo.pick_runs()
 DEFAULT_RUN = os.environ.get(
     "CDO_RUN", "/project/nr_dream002/DREAM-runs/output/iter_dthmode24_rp_boltzmann-eqterm")
 RUN = picker.selected[0] if picker.selected else Path(DEFAULT_RUN)
+if not picker.selected:
+    print("No run ticked in the picker, using DEFAULT_RUN. Tick a run and re-run this cell.")
 run = cdo.Run.from_folder(RUN)
 print(RUN)
 print(run.report())

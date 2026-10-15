@@ -122,6 +122,11 @@ class RunPicker:
             from IPython import get_ipython
             from IPython.display import display
         except ImportError:
+            import sys
+
+            print(f"ipywidgets is not importable in this kernel ({sys.executable}).\n"
+                  "Switch to the CDO-plotting kernel, 'Python 3 (ipykernel)', for the "
+                  "selection box, or pick by number with .choose(...).\n")
             print(self.table())
             return self
         shell = get_ipython()
