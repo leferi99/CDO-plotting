@@ -2,12 +2,18 @@
 # jupyter:
 #   jupytext:
 #     formats: py:percent
+#     text_representation:
+#       extension: .py
+#       format_name: percent
+#       format_version: '1.3'
+#       jupytext_version: 1.19.6
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
 #     name: python3
 # ---
 
+# %% editable=true deletable=true slideshow={"slide_type": ""}
 """Drag force on electrons (the Chandrasekar figure), as REPL cell (# %%) script.
 
 A standalone schematic of the collisional drag force against parallel momentum,

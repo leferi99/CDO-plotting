@@ -9,7 +9,7 @@ and a summary table to `<out>/index.md`.
 
 Usage:
 
-    python scripts/plot_all_runs.py                      # all groups -> ./plots
+    python scripts/plot_all_runs.py                      # all groups -> $CDO_FIGURE_ROOT or ./plots
     python scripts/plot_all_runs.py --group demo_jorek   # one group
     python scripts/plot_all_runs.py --only ar0p3pct      # substring filter
     python scripts/plot_all_runs.py --runs-root /path/output --glob "tauw_*"
@@ -19,7 +19,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 import warnings
 from pathlib import Path
@@ -206,9 +205,7 @@ def main(argv=None):
                         help="sweep this root alone instead of the default groups")
     parser.add_argument("--glob", default="*", help="run folder glob under --runs-root")
     parser.add_argument("--group", default=None, help="only the default group of this name")
-    parser.add_argument("--out", type=Path,
-                        default=Path(os.environ.get(
-                            "CDO_FIGURE_ROOT", Path(__file__).resolve().parent.parent / "plots")))
+    parser.add_argument("--out", type=Path, default=cdo.paths.figure_root())
     parser.add_argument("--only", default=None,
                         help="only runs whose folder name contains this substring")
     parser.add_argument("--jorek-csv", type=Path, default=None,

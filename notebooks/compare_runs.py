@@ -53,7 +53,9 @@ time_shift_ms = {}
 styles = {}
 references = {}
 
-OUT = os.environ.get("CDO_OUT")  # a folder to save PNGs instead of showing them
+SAVE = False  # True or 1 saves to CDO_FIGURE_ROOT/notebook/_comparison/, False or 0 shows them here
+OUT = os.environ.get("CDO_OUT") or (
+    cdo.paths.figure_root() / "notebook" / "_comparison" if SAVE else None)
 made = figures.compare(runs, out=OUT, time_shift_ms=time_shift_ms, styles=styles,
                        references=references)
 print(made)

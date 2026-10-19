@@ -18,6 +18,13 @@ def test_variable_sets_root_and_expands_home(monkeypatch):
         root / "DEMO_data_2026/runs/tauw_50ms_iso"
 
 
+def test_figure_root_from_variable_or_repo(monkeypatch):
+    monkeypatch.delenv("CDO_FIGURE_ROOT", raising=False)
+    assert paths.figure_root() == Path(paths.__file__).resolve().parent.parent / "plots"
+    monkeypatch.setenv("CDO_FIGURE_ROOT", "~/plots")
+    assert paths.figure_root() == Path.home() / "plots"
+
+
 def test_picker_skips_missing_roots(monkeypatch, tmp_path):
     from cdo.picker import survey_runs
 

@@ -2,6 +2,11 @@
 # jupyter:
 #   jupytext:
 #     formats: py:percent
+#     text_representation:
+#       extension: .py
+#       format_name: percent
+#       format_version: '1.3'
+#       jupytext_version: 1.19.6
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -67,7 +72,9 @@ figures.build(run, name, sel)
 plt.show()
 
 # %%
-OUT = os.environ.get("CDO_OUT")  # a folder to save PNGs instead of showing them
+SAVE = True  # True or 1 saves to CDO_FIGURE_ROOT/notebook/<run>/, False or 0 shows them here
+OUT = os.environ.get("CDO_OUT") or (
+    cdo.paths.figure_root() / "notebook" / Path(RUN).name if SAVE else None)
 if OUT is not None or "ipykernel" in sys.modules:
     result = figures.make_figures(run, sel, out=OUT)
     print(len(result["made"]), "figures,", len(result["skipped"]), "skipped")

@@ -60,6 +60,15 @@ rsync -avH --prune-empty-dirs --exclude='*.inprogress.h5' \
 `cdo.paths` resolves the root and the collection folders.
 The run picker, the notebook defaults and the batch script all go through it.
 
+Saved figures go under one figure root, `CDO_FIGURE_ROOT` if set, the repository's `plots/` otherwise:
+
+| Folder under the figure root | Figures |
+|---|---|
+| `<group>/<run>/` | Batch script, one run |
+| `<group>/_comparison/` | Batch script, cross-run overlays of a group |
+| `notebook/<run>/` | `run_overview.py` and `distributions.py` with `SAVE = True` |
+| `notebook/_comparison/` | `compare_runs.py` with `SAVE = True` |
+
 ## The package
 
 | Module | Purpose |
@@ -67,7 +76,7 @@ The run picker, the notebook defaults and the batch script all go through it.
 | `cdo.figures` | The standard figure set of a run, by name. `make_figures`, `build`, `names`, `compare`. |
 | `cdo.selection` | `Selection`: times, radii (r/a) and momentum ranges, separately for fluid and kinetic quantities. |
 | `cdo.picker` | `pick_runs()`: a run chooser, checkboxes or a single-choice list in Jupyter. |
-| `cdo.paths` | The data root (`CDO_DATA_ROOT`) and the run collection folders. |
+| `cdo.paths` | The data root (`CDO_DATA_ROOT`), the run collection folders, and the figure root (`CDO_FIGURE_ROOT`). |
 | `cdo.derived` | Cell volumes, radial integrals and averages, ions, and `rate_channels`. |
 | `cdo.schema` | Canonical field names, the path alias table, and the `Resolver` that reads them. See `docs/schema.md`. |
 | `cdo.io` | Output file discovery, and `add_dream_to_path` for the optional cross-check. |
@@ -154,8 +163,12 @@ Then open the `http://localhost:8890/?token=...` link that JupyterLab prints, an
 | `compare_runs.py` | Overlays of currents and temperature for several runs, with optional time shifts and reference points. |
 | `drag_force.py` | Drag-force schematic from `Chandrasekar.csv`. |
 
+The saving cell of each run notebook has a `SAVE` toggle.
+`SAVE = False` (or `0`) shows the figures in the notebook, `SAVE = True` (or `1`) saves them under `CDO_FIGURE_ROOT`.
+
 The notebooks also run top to bottom with `python notebooks/<name>.py`.
 `CDO_RUN`, `CDO_RUNS` and `CDO_OUT` then set the run(s) and the output folder.
+`CDO_OUT` overrides the `SAVE` folder.
 
 ```python
 import cdo
@@ -178,7 +191,7 @@ figures.make_figures(run, sel, out="plots/test")   # PNGs + plot_settings.json
 It adds cross-run overlays per group and an `index.md`.
 
 ```bash
-.venv/bin/python scripts/plot_all_runs.py                     # all groups -> ./plots
+.venv/bin/python scripts/plot_all_runs.py                     # all groups -> $CDO_FIGURE_ROOT or ./plots
 .venv/bin/python scripts/plot_all_runs.py --group demo_jorek  # one group
 .venv/bin/python scripts/plot_all_runs.py --pdf               # PDF copies in each run's pdf/
 ```

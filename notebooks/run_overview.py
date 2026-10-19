@@ -2,6 +2,11 @@
 # jupyter:
 #   jupytext:
 #     formats: py:percent
+#     text_representation:
+#       extension: .py
+#       format_name: percent
+#       format_version: '1.3'
+#       jupytext_version: 1.19.6
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -101,7 +106,9 @@ plt.show()
 # `pdf=True` adds PDF copies in `OUT/pdf/`.
 
 # %%
-OUT = os.environ.get("CDO_OUT")  # e.g. REPO / "plots" / "notebook" / Path(RUN).name
+SAVE = True  # True or 1 saves to CDO_FIGURE_ROOT, False or 0 shows the figures here
+OUT = os.environ.get("CDO_OUT") or (
+    cdo.paths.figure_root() / "notebook" / Path(RUN).name if SAVE else None)
 if OUT is not None or "ipykernel" in sys.modules:
     result = figures.make_figures(run, sel, out=OUT, pdf=False)
     print(len(result["made"]), "figures,", len(result["skipped"]), "skipped")
