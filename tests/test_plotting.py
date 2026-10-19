@@ -185,3 +185,58 @@ def test_time_marks_short_run_resolves_sub_millisecond_steps():
     assert frames[0] == 0
     assert frames[-1] == len(timegrid) - 1
     assert len(frames) == len(set(frames)) == 7
+
+
+class _StubReference:
+    def __init__(self, arrays):
+        self.arrays = arrays
+
+    def read(self, name):
+        return self.arrays[name]
+
+
+class _StubRun:
+    """Two time steps, two radii, a hot-tail grid up to p = 2 and a runaway grid above."""
+
+    def __init__(self):
+        self.timegrid_ms = np.array([0.0, 1.0])
+        self.radialgrid = np.array([0.1, 0.3])
+        self.minor_radius = 0.4
+        self.derived_cache = {}
+        self.reference = _StubReference({
+            "hot_p": np.array([0.5, 1.5]),
+            "hot_p_edges": np.array([0.0, 1.0, 2.0]),
+            "re_p": np.array([3.0, 5.0, 7.0]),
+        })
+
+    def angle_average(self, grid, moment="distribution"):
+        n = 2 if grid == "hottail" else 3
+        values = np.ones((2, 2, n))
+        values[..., 0] = 0.0  # a non-positive cell the log axis must tolerate
+        return values
+
+
+@pytest.mark.parametrize("moment", ["distribution", "density"])
+def test_angle_averaged_combined_1D_joins_grids_and_marks_boundary(moment):
+    fig = plotting.angle_averaged_combined_1D(_StubRun(), moment, times_ms=[0, 0.9, 1])
+    ax = fig.axes[0]
+    curves = [line for line in ax.lines if line.get_linestyle() == "-"]
+    assert len(curves) == 2  # 0.9 and 1 ms snap to the same step
+    np.testing.assert_array_equal(curves[0].get_xdata(), [0.5, 1.5, 3.0, 5.0, 7.0])
+    boundary = [line for line in ax.lines if line.get_linestyle() == "--"]
+    assert len(boundary) == 1 and boundary[0].get_xdata()[0] == 2.0
+
+
+def test_angle_averaged_combined_1D_snaps_radius_and_trims_momentum():
+    fig = plotting.angle_averaged_combined_1D(_StubRun(), times_ms=["end"], r_over_a=0.7,
+                                              p_range=(2.5, None))
+    ax = fig.axes[0]
+    assert "r/a = 0.750" in ax.get_title()
+    curves = [line for line in ax.lines if line.get_linestyle() == "-"]
+    np.testing.assert_array_equal(curves[0].get_xdata(), [3.0, 5.0, 7.0])
+    assert not [line for line in ax.lines if line.get_linestyle() == "--"]
+
+
+def test_angle_averaged_combined_1D_rejects_unknown_moment():
+    with pytest.raises(ValueError):
+        plotting.angle_averaged_combined_1D(_StubRun(), "current")

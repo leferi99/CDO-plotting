@@ -109,8 +109,14 @@ Fluid figures use `selection.fluid`:
 Kinetic figures use `selection.kinetic`, one file per grid, radius and range:
 
 - `f_<grid>_<r/a>[_<range>]`: momentum-pitch maps at the chosen times, or f(p) curves on an isotropic grid.
-- `dndp_<grid>_<r/a>[_<range>]`: pitch-integrated density per unit momentum.
 - `spectrum_<grid>_<r/a>[_<range>]`: density per unit kinetic energy, in m^-3 MeV^-1.
+
+With both grids enabled, per radius and range:
+
+- `f_combined_<r/a>[_<range>]`: angle-averaged f of the hot-tail and runaway grids on one momentum axis, with the hot-runaway boundary dashed in grey.
+- `dndp_combined_<r/a>[_<range>]`: the same for the pitch-integrated density per unit momentum, dn/dp.
+
+`cdo.plotting.angle_averaged_combined_1D` draws these directly, with times in ms, r/a and a momentum range in m_e c.
 
 Titles show the snapped values: r/a, r in metres, and times.
 Colour maps show missing data in white.

@@ -535,6 +535,96 @@ def angle_averaged_momentum_1D(
     return _finish(fig, folder, savename, dpi)
 
 
+#: y-axis labels of :func:`angle_averaged_combined_1D`, by moment.
+_COMBINED_YLABELS = {
+    "distribution": r"$\langle f\rangle$ [m$^{-3}$ $(m_e c)^{-3}$]",
+    "density": r"$dn/dp$ [m$^{-3}$ $(m_e c)^{-1}$]",
+}
+
+
+def _cached_angle_average(run, grid, moment):
+    """``run.angle_average`` kept in the run's derived cache, shared with cdo.figures."""
+    cache = getattr(run, "derived_cache", None)
+    if cache is None:
+        return run.angle_average(grid, moment)
+    key = f"{'dndp' if moment == 'density' else 'favg'}_{grid}"
+    if key not in cache:
+        value = run.angle_average(grid, moment)
+        if value is None:
+            return None
+        cache[key] = value
+    return cache[key]
+
+
+def angle_averaged_combined_1D(
+    run,
+    moment="distribution",
+    *,
+    times_ms="auto",
+    r_over_a=0.0,
+    p_range=(None, None),
+    figsize=(9, 5),
+    ylim=(None, None),
+    xlabel=None,
+    ylabel=None,
+    title=None,
+    folder=None,
+    savename=None,
+    dpi=150,
+):
+    """Hot-tail and runaway angle averages joined on one momentum axis.
+
+    ``moment`` is ``"distribution"`` for the pitch-averaged f or ``"density"``
+    for dn/dp. ``times_ms`` is a list of times in ms and ``"end"`` entries, or
+    ``"auto"`` for the standard ladder of the kinetic figures. ``r_over_a`` is
+    the radius as r/a. Both are snapped to the stored data, as a
+    :class:`~cdo.selection.Selection` is. ``p_range`` keeps the momentum cells
+    inside ``(min, max)`` in m_e c, ``None`` meaning the grid edge.
+
+    Each time gives one curve, the hot-tail grid followed by the runaway grid
+    in the same colour, early times light and late times dark. A grey dashed
+    vertical line marks the hot-runaway boundary, the upper momentum edge of
+    the hot-tail grid, when it lies inside ``p_range``. Non-positive values are
+    left out of the log y-axis.
+    """
+    from .selection import snap_radii, snap_times  # selection imports this module
+
+    if moment not in _COMBINED_YLABELS:
+        raise ValueError(f"moment must be one of {list(_COMBINED_YLABELS)}, got {moment!r}")
+    hot = _cached_angle_average(run, "hottail", moment)
+    re = _cached_angle_average(run, "runaway", moment)
+    if hot is None or re is None:
+        raise ValueError("both the hot-tail and the runaway grid must be enabled")
+    p = np.concatenate([run.reference.read("hot_p"), run.reference.read("re_p")])
+    p_boundary = run.reference.read("hot_p_edges")[-1]
+    lo, hi = p_range
+    keep = np.ones(p.shape, dtype=bool)
+    if lo is not None:
+        keep &= p >= lo
+    if hi is not None:
+        keep &= p <= hi
+    times = snap_times(run.timegrid_ms, times_ms, lines=False)
+    radius = snap_radii(run.radialgrid, run.minor_radius, [r_over_a])[0]
+
+    with plt.rc_context(LINE_RC):
+        fig, axes = plt.subplots(figsize=figsize)
+        palette = plt.cm.viridis(np.linspace(0.9, 0.0, max(len(times), 1)))
+        for c, tm in zip(palette, times):
+            values = np.concatenate([hot[tm.index, radius.cell], re[tm.index, radius.cell]])
+            values = np.where(values > 0, values, np.nan)
+            axes.plot(p[keep], values[keep], color=c, label=tm.label)
+        if (lo is None or p_boundary >= lo) and (hi is None or p_boundary <= hi):
+            axes.axvline(p_boundary, color="grey", linestyle="--", linewidth=1.0)
+        axes.set_yscale("log")
+        axes.set_ylim(ylim)
+        axes.set_xlabel(xlabel or r"Momentum normalized to $m_e c$")
+        axes.set_ylabel(ylabel or _COMBINED_YLABELS[moment])
+        axes.set_title(title or radius.label, fontsize="medium")
+        axes.legend(fontsize="small", loc="upper left", bbox_to_anchor=(1.01, 1.0))
+
+    return _finish(fig, folder, savename, dpi)
+
+
 # --- time-index helpers, from the notebook -------------------------------
 
 

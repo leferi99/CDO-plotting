@@ -22,8 +22,13 @@ Kinetic figures (selection ``kinetic``), per grid, radius and range:
 
 - ``f_<grid>_<r/a>[_<range>]``: momentum-pitch maps at the chosen times, or
   f(p) curves on an isotropic grid.
-- ``dndp_<grid>_<r/a>[_<range>]``: pitch-integrated density per unit momentum.
 - ``spectrum_<grid>_<r/a>[_<range>]``: density per unit kinetic energy.
+
+Combined figures, when the run has both grids, per radius and range:
+
+- ``f_combined_<r/a>[_<range>]`` and ``dndp_combined_<r/a>[_<range>]``: the
+  angle-averaged f, or dn/dp, of the hot-tail and runaway grids on one
+  momentum axis, with the hot-runaway boundary dashed in grey.
 
 Colour maps show missing data in white, and on log scales also zero and
 negative values. Titles carry the snapped r/a, r in metres and times.
@@ -471,6 +476,13 @@ def _distribution(ctx: Context, grid: str, radius: Radius, rng):
     return fig
 
 
+def _combined(ctx: Context, moment: str, radius: Radius, rng):
+    kin = ctx.sel.kinetic
+    return plotting.angle_averaged_combined_1D(
+        ctx.run, moment, times_ms=kin.times_ms, r_over_a=radius.requested,
+        p_range=rng.momentum(), title=f"Hot-tail and runaway grids, {radius.label}, {rng.label}")
+
+
 def _isotropic_distribution(ctx, grid, radius, rng, p, frames):
     with plt.rc_context(plotting.LINE_RC):
         fig, ax = plt.subplots(figsize=(9, 5))
@@ -494,24 +506,6 @@ def _density_moment(ctx: Context, grid: str):
             raise Skip(f"no {GRID_NAMES[grid]} grid")
         cache[key] = value
     return cache[key]
-
-
-def _dndp(ctx: Context, grid: str, radius: Radius, rng):
-    dndp = _density_moment(ctx, grid)
-    p, _, _ = _grid_axes(ctx, grid)
-    cols = _range_columns(p, rng)
-    with plt.rc_context(plotting.LINE_RC):
-        fig, ax = plt.subplots(figsize=(9, 5))
-        for c, tm in zip(_time_colours(len(ctx.kinetic_times)), ctx.kinetic_times):
-            ax.plot(p[cols], _line_values(dndp[tm.index, radius.cell, cols], "log"), color=c,
-                    label=tm.label)
-        ax.set_yscale("log")
-        ax.set_xlabel(MOMENTUM_LABEL)
-        ax.set_ylabel(r"$dn/dp$ [m$^{-3}$ $(m_e c)^{-1}$]")
-        ax.set_title("Pitch-integrated density, " + _kinetic_title(grid, radius, rng),
-                     fontsize="medium")
-        _legend_outside(ax)
-    return fig
 
 
 def _spectrum(ctx: Context, grid: str, radius: Radius, rng):
@@ -573,10 +567,16 @@ def plan(run, selection: Selection | None = None) -> list[tuple[str, Callable]]:
         for rad in ctx.kinetic_radii:
             for rng in ctx.ranges:
                 suffix = f"_{rad.tag}" + (f"_{rng.tag}" if rng.tag else "")
-                for kind, builder in (("f", _distribution), ("dndp", _dndp),
-                                      ("spectrum", _spectrum)):
+                for kind, builder in (("f", _distribution), ("spectrum", _spectrum)):
                     items.append((f"{kind}_{short}{suffix}",
                                   lambda b=builder, g=grid, r=rad, x=rng: b(ctx, g, r, x)))
+    if ctx.grid_on("hottail") and ctx.grid_on("runaway"):
+        for rad in ctx.kinetic_radii:
+            for rng in ctx.ranges:
+                suffix = f"_{rad.tag}" + (f"_{rng.tag}" if rng.tag else "")
+                for kind, moment in (("f", "distribution"), ("dndp", "density")):
+                    items.append((f"{kind}_combined{suffix}",
+                                  lambda m=moment, r=rad, x=rng: _combined(ctx, m, r, x)))
     sel = ctx.sel
     return [(name, fn) for name, fn in items if sel.wants(name)]
 
