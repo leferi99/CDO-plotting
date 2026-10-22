@@ -79,3 +79,16 @@ def test_selection_skip_and_only():
     assert not s.wants("rate_map_net") and s.wants("temperature_map")
     s = sel.Selection(only=["currents", "f_re"])
     assert s.wants("f_re_ra0.00") and not s.wants("temperature_map")
+
+
+def test_selection_wildcards_match_the_whole_name():
+    s = sel.Selection(skip=["spectrum_*_Emin-10MeV"])
+    assert not s.wants("spectrum_hot_ra0.05_Emin-10MeV")
+    assert s.wants("spectrum_hot_ra0.05") and s.wants("spectrum_re_ra0.50_E1-5MeV")
+    assert s.wants("f_hot_ra0.05_Emin-10MeV")
+    s = sel.Selection(only=["*_ra0.05*", "currents"], skip=["f_*"])
+    assert s.wants("spectrum_re_ra0.05_Emin-10MeV") and s.wants("currents")
+    assert s.wants("electric_field_ra0.05")
+    assert not s.wants("f_re_ra0.05") and not s.wants("spectrum_re_ra0.50")
+    assert not sel.Selection(skip=["*_map"]).wants("temperature_map")
+    assert sel.Selection(skip=["*_map"]).wants("temperature_map_extra")

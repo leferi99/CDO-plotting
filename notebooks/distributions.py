@@ -62,13 +62,16 @@ print(run.report())
 # | `range_unit` | `"MeV"` (kinetic energy) or `"mec"` (momentum over m_e c) | `"MeV"` |
 # | `decades` | depth of the log colour scale of the f maps | `12` |
 #
-# `only` and `skip` take figure-name prefixes. The kinetic names are
+# `only` and `skip` take figure-name prefixes, or wildcard patterns with `*`,
+# `?` or `[...]` matched against the whole name. The kinetic names are
 # `f_hot_`, `f_re_` (momentum-pitch maps), `spectrum_hot_`, `spectrum_re_`
 # (dn/dE), `f_combined_` and `dndp_combined_` (angle-averaged f and dn/dp of
 # both grids on one momentum axis, the hot-runaway boundary dashed grey),
 # each followed by `<r/a>[_<range>]`. `only=["f_combined_", "dndp_combined_"]`
 # keeps just the combined plots; `only=["f_", "spectrum_"]` keeps every map,
-# spectrum and combined f.
+# spectrum and combined f. `skip=["spectrum_*_Emin-10MeV"]` drops the spectra
+# of that range at every radius, `only=["*_combined_*_Emin-10MeV"]` keeps the
+# combined plots of that range only.
 #
 # The `<r/a>` tag is the snapped radius and depends on the run's radial grid:
 # on an 11-cell grid r/a = 0 becomes `ra0.05` and 1.0 becomes `ra0.95`. Range

@@ -76,12 +76,19 @@ print(run.report())
 # | | `ranges` | list of `(min, max)`, one figure each, `None` = grid edge | `[(None, None)]` |
 # | | `range_unit` | `"MeV"` (kinetic energy) or `"mec"` (momentum over m_e c) | `"MeV"` |
 # | | `decades` | depth of the log colour scale of the f maps | `12` |
-# | `Selection` | `skip` | figure-name prefixes to leave out | `[]` |
-# | | `only` | keep only names starting with one of these prefixes | `[]` |
+# | `Selection` | `skip` | figure names to leave out, as prefixes or wildcard patterns | `[]` |
+# | | `only` | keep only names matching one of these prefixes or patterns | `[]` |
 #
 # Fields left out keep their defaults, so
 # `Selection(kinetic=KineticSelection(radii=[0.5]))` changes only the kinetic
 # radii. `"auto"` picks a standard set of times from the run length.
+#
+# A plain `skip`/`only` entry matches every name starting with it:
+# `skip=["rate_map"]` drops all `rate_map_<channel>` figures. An entry with
+# `*`, `?` or `[...]` is a wildcard pattern over the whole name:
+# `skip=["spectrum_*_Emin-10MeV"]` drops the spectra of that range at every
+# radius, `only=["*_ra0.05*"]` keeps every figure at r/a 0.05, and
+# `skip=["*_map"]` drops every `<quantity>_map`. Both kinds mix in one list.
 #
 # ### Figure names
 # `figures.names(run, sel)` prints every name the run can make with `sel`.
@@ -193,7 +200,7 @@ print("\n".join(figures.names(run, sel)))
 # The `cdo.plotting` functions save a PNG and close the figure when given
 # `folder=` and `savename=`, and return it open otherwise.
 #
-# **A few figures at once.** Put their name prefixes in `only` and call
+# **A few figures at once.** Put their name prefixes or patterns in `only` and call
 # `figures.make_figures(run, Selection(only=["currents", "temperature_map"]))`,
 # which shows them inline, or add `out=<folder>` to save them.
 

@@ -19,6 +19,7 @@ its own figure file.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+from fnmatch import fnmatchcase
 from typing import Sequence
 
 import numpy as np
@@ -65,9 +66,12 @@ class KineticSelection:
 class Selection:
     """What the figures show.
 
-    ``skip`` lists figure names or name prefixes to leave out, for example
-    ``["rate_map", "f_hot"]``. ``only``, when not empty, keeps just the figures
-    whose name starts with one of its entries.
+    ``skip`` lists figures to leave out. ``only``, when not empty, keeps just
+    the figures that match one of its entries. A plain entry matches every name
+    starting with it, so ``"rate_map"`` covers ``rate_map_net`` and the rest.
+    An entry with ``*``, ``?`` or ``[...]`` is a wildcard pattern matched
+    against the whole name: ``"spectrum_*_Emin-10MeV"`` covers the spectra of
+    that range at every radius, and ``"*_ra0.05*"`` every figure at r/a 0.05.
     """
 
     fluid: FluidSelection = field(default_factory=FluidSelection)
@@ -76,9 +80,16 @@ class Selection:
     only: Sequence[str] = ()
 
     def wants(self, name: str) -> bool:
-        if self.only and not any(name.startswith(p) for p in self.only):
+        if self.only and not any(_matches(name, p) for p in self.only):
             return False
-        return not any(name.startswith(p) for p in self.skip)
+        return not any(_matches(name, p) for p in self.skip)
+
+
+def _matches(name: str, entry: str) -> bool:
+    """A ``skip``/``only`` entry: a wildcard pattern over the whole name, or a prefix."""
+    if any(c in entry for c in "*?["):
+        return fnmatchcase(name, entry)
+    return name.startswith(entry)
 
 
 # --- snapping ---------------------------------------------------------------
