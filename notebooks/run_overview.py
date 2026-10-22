@@ -80,14 +80,21 @@ print(run.report())
 # | | `pitch_cells` | turns on the `pitch_` plots: a number of cells spread from the beam, `"all"`, or a list of cell indices | `None` (off) |
 # | | `analytic` | `AvalancheParams`, or a list, for the dashed analytic avalanche curves | `None` (off) |
 # | | `combined_per_time` | one combined figure per time, `..._t<ms>ms` | `False` |
+# | | `combined_ranges` | ranges of the combined figures, for the hot-runaway boundary | `[(None, 10)]` |
+# | | `runaway_zoom_ranges` | extra ranges of `favg_re` and `pitch_re` | `[(None, 40)]` |
 # | `Selection` | `skip` | figure names to leave out, as prefixes or wildcard patterns | `DEFAULT_SKIP` |
 # | | `only` | keep only names matching one of these prefixes or patterns | `[]` |
 #
-# `DEFAULT_SKIP` leaves out the time traces and maps of Z_eff and n_cold, the
-# time traces of the current densities, the electric-field time traces
-# (`electric_field_<r/a>`, `electric_field_average`) and `electric_field_map`,
-# so E shows as radial profiles and in `critical_field_ratio_map`. `skip=[]` makes every
-# figure; `skip=[*DEFAULT_SKIP, ...]` adds to it.
+# `DEFAULT_SKIP` leaves out the time traces and maps of Z_eff and n_cold; the
+# time traces of the current densities and the temperature; the traces and
+# profiles of the runaway and hot densities and the radiated power, which keep
+# their maps; the electric-field time traces (`electric_field_<r/a>`,
+# `electric_field_average`) and `electric_field_map`, so E shows as radial
+# profiles and in `critical_field_ratio_map`; and `dndp_combined_`. `skip=[]`
+# makes every figure; `skip=[*DEFAULT_SKIP, ...]` adds to it.
+#
+# Time axes start at 0 ms, momentum and energy axes at 0, or at the lower end
+# of a time window or momentum range. Momentum is the total momentum |p|.
 #
 # Fields left out keep their defaults, so
 # `Selection(kinetic=KineticSelection(radii=[0.5]))` changes only the kinetic
@@ -113,10 +120,15 @@ print(run.report())
 #   `critical_field_ratio_map` (|E|/E_c,eff in labelled bands, black at 1),
 #   `generation_rates`, `rate_map_<channel>`.
 # - Kinetic, per radius and range: `f_hot_`, `f_re_` (momentum-pitch maps),
-#   `spectrum_hot_`, `spectrum_re_` (dn/dE), `pitch_hot_`, `pitch_re_` (f
-#   against p per pitch cell, when `pitch_cells` is set), `f_combined_`,
-#   `dndp_combined_` (angle-averaged f and dn/dp of both grids on one momentum
-#   axis), each followed by `<r/a>[_<range>]`.
+#   `spectrum_hot_`, `spectrum_re_` (dn/dE), `favg_re_` (angle-averaged f of
+#   the runaway grid against |p|), `pitch_hot_`, `pitch_re_` (f against |p|
+#   per pitch cell, when `pitch_cells` is set), each followed by
+#   `<r/a>[_<range>]`. `favg_re_` and `pitch_re_` also come in the
+#   `runaway_zoom_ranges`, 0-40 MeV by default.
+# - Combined, per radius, in `combined_ranges` (0-10 MeV by default):
+#   `f_combined_`, `dndp_combined_` (angle-averaged f and dn/dp of both grids
+#   against |p|), `dnde_combined_` (dn/dE of both grids against kinetic
+#   energy), each followed by `<r/a>_<range>`.
 #
 # ### Analytic avalanche distribution
 # `ANALYTIC` holds the parameters of the analytic avalanche f of Embréus et
@@ -143,13 +155,15 @@ sel = Selection(
     kinetic=KineticSelection(
         times_ms=[0, 1, 2, 5, 10, 15, 20, 25, 30, 40, 50, "end"],
         radii=[0.0, 0.25, 0.5, 0.75, 0.9],
-        ranges=[(None, None), (None, 10)],  # , (None, 5)
+        ranges=[(None, None)],
         range_unit="MeV",
         decades=12,
-        pitch_cells=None,  # 4 for the pitch_ plots
+        pitch_cells=4,  # None for no pitch_ plots
         analytic=ANALYTIC,
+        combined_ranges=[(None, 10)],
+        runaway_zoom_ranges=[(None, 40)],
     ),
-    skip=[*DEFAULT_SKIP, "dndp_", "f_re_*10MeV", "f_hot_*10MeV", "spectrum*10MeV"],
+    skip=[*DEFAULT_SKIP],
     only=[],
 )
 
@@ -189,8 +203,8 @@ print("\n".join(figures.names(run, sel)))
 #
 # **Directly from `cdo.plotting`**, with no names and no selection. The
 # combined hot-tail and runaway plot takes times in ms, r/a and a momentum
-# range in m_e c. `moment` is `"distribution"` (angle-averaged f) or
-# `"density"` (dn/dp):
+# range in m_e c. `moment` is `"distribution"` (angle-averaged f),
+# `"density"` (dn/dp) or `"energy"` (dn/dE against kinetic energy):
 # ```python
 # from cdo import plotting
 # plotting.angle_averaged_combined_1D(run, "density", times_ms=[1, 10, "end"],

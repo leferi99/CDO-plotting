@@ -17,7 +17,7 @@
 # # Distribution functions of one run
 #
 # The kinetic figures only: momentum-pitch maps of f, f per pitch cell and
-# energy spectra per grid, and the angle-averaged f and dn/dp of both grids on
+# energy spectra per grid, and the angle-averaged f, dn/dp and dn/dE of both grids on
 # one momentum axis, optionally with the analytic avalanche distribution.
 # Each (radius, range) pair is one figure, with one panel or curve per time.
 
@@ -66,14 +66,21 @@ print(run.report())
 # | `pitch_angle_max_deg` | largest angle from the beam when `pitch_cells` is a number | `20` |
 # | `analytic` | `AvalancheParams`, or a list of them, for the analytic curves; `None` for none | `None` |
 # | `combined_per_time` | one combined figure per time, named `..._t<ms>ms` | `False` |
+# | `combined_ranges` | ranges of the combined figures, for the hot-runaway boundary | `[(None, 10)]` |
+# | `runaway_zoom_ranges` | extra ranges of `favg_re` and `pitch_re` | `[(None, 40)]` |
 #
 # `only` and `skip` take figure-name prefixes, or wildcard patterns with `*`,
 # `?` or `[...]` matched against the whole name. The kinetic names are
 # `f_hot_`, `f_re_` (momentum-pitch maps), `spectrum_hot_`, `spectrum_re_`
-# (dn/dE), `pitch_hot_`, `pitch_re_` (f against p, one line per pitch cell,
-# on grids with more than one pitch cell, when `pitch_cells` is set), `f_combined_` and `dndp_combined_`
-# (angle-averaged f and dn/dp of both grids on one momentum axis, the
-# hot-runaway boundary dashed grey), each followed by `<r/a>[_<range>]`. `only=["f_combined_", "dndp_combined_"]`
+# (dn/dE), `favg_re_` (angle-averaged f of the runaway grid against |p|),
+# `pitch_hot_`, `pitch_re_` (f against |p|, one line per pitch cell, on grids
+# with more than one pitch cell, when `pitch_cells` is set), each followed by
+# `<r/a>[_<range>]`; `favg_re_` and `pitch_re_` also in the
+# `runaway_zoom_ranges`. The combined figures `f_combined_`, `dndp_combined_`
+# (angle-averaged f and dn/dp of both grids against total momentum |p|) and
+# `dnde_combined_` (dn/dE against kinetic energy), with the hot-runaway
+# boundary dashed grey, come only in the `combined_ranges`. `dndp_combined_` is in `DEFAULT_SKIP`, so it needs
+# `skip=[]`. `only=["f_combined_", "dnde_combined_"]`
 # keeps just the combined plots; `only=["f_", "spectrum_"]` keeps every map,
 # spectrum and combined f. `skip=["spectrum_*_Emin-10MeV"]` drops the spectra
 # of that range at every radius, `only=["*_combined_*_Emin-10MeV"]` keeps the
@@ -138,8 +145,10 @@ sel = Selection(
         pitch_angle_max_deg=20,
         analytic=ANALYTIC,
         combined_per_time=False,
+        combined_ranges=[(None, 10)],
+        runaway_zoom_ranges=[(None, 40)],
     ),
-    only=["f_", "dndp_", "pitch_"],
+    only=["f_", "favg_", "dnde_", "pitch_"],
 )
 fn = figures.names(run, sel)
 print("\n".join(fn))
@@ -161,7 +170,7 @@ print("\n".join(fn))
 # table above, all times `"auto"`, r/a 0 and 0.5, the full grid. Take the
 # name from `figures.names(run)`:
 # ```python
-# figures.build(run, "dndp_combined_ra0.50")
+# figures.build(run, "dnde_combined_ra0.50")
 # plt.show()
 # ```
 #
@@ -184,7 +193,8 @@ print("\n".join(fn))
 #
 # **Directly from `plotting`**, with no names and no selection. The combined
 # plot takes times in ms, r/a and a momentum range in m_e c. `moment` is
-# `"distribution"` (angle-averaged f, the default) or `"density"` (dn/dp):
+# `"distribution"` (angle-averaged f, the default), `"density"` (dn/dp) or
+# `"energy"` (dn/dE against kinetic energy):
 # ```python
 # plotting.angle_averaged_combined_1D(run, "density", times_ms=[1, 10, "end"],
 #                                     r_over_a=0.5, p_range=(None, 20))
