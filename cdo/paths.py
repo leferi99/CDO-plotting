@@ -12,8 +12,9 @@ older copies of campaign runs, mostly hard links of the same files, and each
 same files. :data:`RUN_GLOBS` and :data:`RUN_EXCLUDE` leave both out, so each
 run is listed once.
 
-On the cluster the root is ``/project/nr_dream002``. Elsewhere, for example on
-a laptop with a synced copy, set ``CDO_DATA_ROOT`` to the root of the copy:
+The root is ``CDO_DATA_ROOT`` if set, the repository's ``data/`` otherwise.
+``data/`` is not tracked and can be a symlink to the data, for example
+``ln -s /path/to/data data`` on the cluster. On a laptop with a synced copy:
 
     export CDO_DATA_ROOT=~/Data/DREAM
 
@@ -34,8 +35,9 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-#: The data root on the cluster, used when CDO_DATA_ROOT is not set.
-CLUSTER_ROOT = Path("/project/nr_dream002")
+#: The data root when CDO_DATA_ROOT is not set: data/ in the repository,
+#: a folder or a symlink, not tracked.
+REPO_DATA_ROOT = Path(__file__).resolve().parent.parent / "data"
 
 #: The figure root when CDO_FIGURE_ROOT is not set: plots/ in the repository.
 REPO_FIGURE_ROOT = Path(__file__).resolve().parent.parent / "plots"
@@ -60,9 +62,9 @@ RUN_EXCLUDE = {
 
 
 def data_root() -> Path:
-    """The data root: ``CDO_DATA_ROOT`` if set, the cluster path otherwise."""
+    """The data root: ``CDO_DATA_ROOT`` if set, the repository's ``data/`` otherwise."""
     value = os.environ.get("CDO_DATA_ROOT")
-    return Path(value).expanduser() if value else CLUSTER_ROOT
+    return Path(value).expanduser() if value else REPO_DATA_ROOT
 
 
 def figure_root() -> Path:

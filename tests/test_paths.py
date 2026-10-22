@@ -3,10 +3,11 @@ from pathlib import Path
 from cdo import paths
 
 
-def test_cluster_root_without_variable(monkeypatch):
+def test_repo_data_root_without_variable(monkeypatch):
     monkeypatch.delenv("CDO_DATA_ROOT", raising=False)
-    assert paths.data_root() == Path("/project/nr_dream002")
-    assert paths.collection("dream_runs") == Path("/project/nr_dream002/DREAM-runs/output")
+    root = Path(paths.__file__).resolve().parent.parent / "data"
+    assert paths.data_root() == root
+    assert paths.collection("dream_runs") == root / "DREAM-runs/output"
 
 
 def test_variable_sets_root_and_expands_home(monkeypatch):

@@ -5,7 +5,7 @@ This is the regression guard for the formulas in :mod:`cdo.moments`: if a future
 DREAM changes a convention, this fails while the synthetic tests still pass.
 
 Point the environment at a DREAM checkout before running, for example
-``PYTHONPATH=~/nr_dream002/DREAM-runs/commit-53d8afb/py``.
+``PYTHONPATH=/path/to/DREAM/py``.
 """
 
 import os

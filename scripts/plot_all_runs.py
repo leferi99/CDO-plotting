@@ -44,8 +44,8 @@ SELECTION = Selection(
                              ranges=[(None, None)], range_unit="MeV"),
 )
 
-# Run collections under the data root: /project/nr_dream002 on the cluster,
-# CDO_DATA_ROOT elsewhere (see cdo/paths.py).
+# Run collections under the data root: CDO_DATA_ROOT, or data/ in the
+# repository (see cdo/paths.py).
 DREAM_RUNS_OUTPUT = cdo.paths.collection("dream_runs")
 DEMO_JOREK_RUNS = cdo.paths.collection("demo_jorek")
 
