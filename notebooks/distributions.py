@@ -40,7 +40,7 @@ cdo.plotting.use_base_style(fontsize=11)
 # %%
 picker = cdo.pick_runs(multiple=False)
 
-# %%
+# %% editable=true deletable=true slideshow={"slide_type": ""}
 DEFAULT_RUN = os.environ.get(
     "CDO_RUN", cdo.paths.run_folder("dream_runs", "iter-nrt/iter_dthmode24_rp_boltzmann-eqterm"))
 RUN = picker.selected[0] if picker.selected else Path(DEFAULT_RUN)
@@ -62,8 +62,10 @@ print(run.report())
 # | `ranges` | list of `(min, max)`, one figure each, `None` = grid edge | `[(None, None)]` |
 # | `range_unit` | `"MeV"` (kinetic energy) or `"mec"` (momentum over m_e c) | `"MeV"` |
 # | `decades` | depth of the log colour scale of the f maps and pitch plots | `12` |
-# | `pitch_cells` | turns on the `pitch_` plots: `"all"`, or indices into the xi cells, negative from the end | `None` (no pitch plots) |
-# | `analytic` | `AvalancheParams` for the dashed analytic curves, `None` for none | `None` |
+# | `pitch_cells` | turns on the `pitch_` plots: a number N of cells spread from the beam, `"all"`, or indices into the xi cells, negative from the end | `None` (no pitch plots) |
+# | `pitch_angle_max_deg` | largest angle from the beam when `pitch_cells` is a number | `20` |
+# | `analytic` | `AvalancheParams`, or a list of them, for the analytic curves; `None` for none | `None` |
+# | `combined_per_time` | one combined figure per time, named `..._t<ms>ms` | `False` |
 #
 # `only` and `skip` take figure-name prefixes, or wildcard patterns with `*`,
 # `?` or `[...]` matched against the whole name. The kinetic names are
@@ -99,32 +101,44 @@ print(run.report())
 # | `n_re` | density in m^-3, `None` for the run's n_re at each time and radius | `None` |
 # | `direction` | `+1` beam at ξ = +1 (DREAM with E > 0), `-1` at ξ = -1 (the paper) | `+1` |
 #
+# A parameter set to `None` comes from the run at each time and radius:
+# E/E_c = |E_field| / Ectot, Z = Zeff, lnΛ = lnLambdaC. `AvalancheParams.from_run()`
+# takes all three from the run. `ANALYTIC` is a list: each entry draws its own
+# curves, the first dashed, the second dotted, and a box on the figure lists
+# the values used. The pitch-averaged f does not depend on E/E_c, so on the
+# combined plots the run values move the curve only through γ0; on the pitch
+# plots E/E_c sets the width in pitch.
+#
 # The analytic f is averaged over each pitch cell, since its width in ξ
 # (about 1/A) is below the cell size near the beam, and the combined plots
 # average it the same way as the data. Set `ANALYTIC = None` to leave it out.
 # The cell prints the pitch cells, for choosing `pitch_cells`.
 
 # %%
-ANALYTIC = cdo.AvalancheParams(E_over_Ec=50, Z_tot=1.4, lnLambda=14.3, c_Z=None,
-                               n_re=None, direction=+1)
-print(f"gamma0 = {ANALYTIC.gamma0:.1f}, mean energy = {ANALYTIC.gamma0 * 0.511:.1f} MeV")
+SET_VALUES = cdo.AvalancheParams(E_over_Ec=50, Z_tot=1.4, lnLambda=14.3, c_Z=None,
+                                 n_re=None, direction=+1)
+RUN_VALUES = cdo.AvalancheParams.from_run(direction=+1)
+ANALYTIC = [SET_VALUES, RUN_VALUES]
+print(f"set values: gamma0 = {SET_VALUES.gamma0:.1f}, mean energy = {SET_VALUES.gamma0 * 0.511:.1f} MeV")
 xi = run.reference.read("re_xi")
 if xi is not None:
     for i, x in enumerate(xi):
         print(f"runaway pitch cell {i:3d} ({i - len(xi):4d}): xi = {x:.5f}")
 
-# %%
+# %% editable=true deletable=true slideshow={"slide_type": ""}
 sel = Selection(
     kinetic=KineticSelection(
         times_ms=[0, 1, 2, 5, 10, 15, 20, 25, 30, 40, 50, "end"],
         radii=[0.0, 0.5, 1.0],
-        ranges=[(None, 10)],
+        ranges=[(None, None)],
         range_unit="MeV",
         decades=12,
-        pitch_cells=None,  # "all" or e.g. [-1, -2, -3, -4] for the pitch_ plots
+        pitch_cells=3,  # None, a number, "all" or e.g. [-1, -4, -7]
+        pitch_angle_max_deg=20,
         analytic=ANALYTIC,
+        combined_per_time=False,
     ),
-    only=["f_combined_"],  #  "dndp_"
+    only=["f_", "dndp_", "pitch_"],
 )
 fn = figures.names(run, sel)
 print("\n".join(fn))
@@ -163,7 +177,7 @@ print("\n".join(fn))
 # **Pitch lines directly**, with the analytic curves dashed:
 # ```python
 # plotting.pitch_resolved_1D(run, "runaway", times_ms=[50, "end"], r_over_a=0.0,
-#                            pitch_cells=[-1, -2, -3, -4], analytic=ANALYTIC)
+#                            pitch_cells=3, analytic=ANALYTIC)
 # plt.show()
 # ```
 #
