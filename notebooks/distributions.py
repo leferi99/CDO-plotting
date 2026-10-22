@@ -104,8 +104,9 @@ print(run.report())
 # A parameter set to `None` comes from the run at each time and radius:
 # E/E_c = |E_field| / Ectot, Z = Zeff, lnΛ = lnLambdaC. `AvalancheParams.from_run()`
 # takes all three from the run. `ANALYTIC` is a list: each entry draws its own
-# curves, the first dashed, the second dotted, and a box on the figure lists
-# the values used. The pitch-averaged f does not depend on E/E_c, so on the
+# curves in the colour of the data, the first dashed, the second dotted, and a
+# box on the figure lists the values used. `ANALYTIC = [SET_VALUES, RUN_VALUES]`
+# adds the curves with the run's values. The pitch-averaged f does not depend on E/E_c, so on the
 # combined plots the run values move the curve only through γ0; on the pitch
 # plots E/E_c sets the width in pitch.
 #
@@ -118,7 +119,7 @@ print(run.report())
 SET_VALUES = cdo.AvalancheParams(E_over_Ec=50, Z_tot=1.4, lnLambda=14.3, c_Z=None,
                                  n_re=None, direction=+1)
 RUN_VALUES = cdo.AvalancheParams.from_run(direction=+1)
-ANALYTIC = [SET_VALUES, RUN_VALUES]
+ANALYTIC = [SET_VALUES]  # [SET_VALUES, RUN_VALUES] to compare with the run's values
 print(f"set values: gamma0 = {SET_VALUES.gamma0:.1f}, mean energy = {SET_VALUES.gamma0 * 0.511:.1f} MeV")
 xi = run.reference.read("re_xi")
 if xi is not None:
@@ -133,7 +134,7 @@ sel = Selection(
         ranges=[(None, None)],
         range_unit="MeV",
         decades=12,
-        pitch_cells=3,  # None, a number, "all" or e.g. [-1, -4, -7]
+        pitch_cells=4,  # None, a number, "all" or e.g. [-1, -4, -7]
         pitch_angle_max_deg=20,
         analytic=ANALYTIC,
         combined_per_time=False,
@@ -177,7 +178,7 @@ print("\n".join(fn))
 # **Pitch lines directly**, with the analytic curves dashed:
 # ```python
 # plotting.pitch_resolved_1D(run, "runaway", times_ms=[50, "end"], r_over_a=0.0,
-#                            pitch_cells=3, analytic=ANALYTIC)
+#                            pitch_cells=4, analytic=ANALYTIC)
 # plt.show()
 # ```
 #

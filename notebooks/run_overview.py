@@ -76,6 +76,9 @@ print(run.report())
 # | | `ranges` | list of `(min, max)`, one figure each, `None` = grid edge | `[(None, None)]` |
 # | | `range_unit` | `"MeV"` (kinetic energy) or `"mec"` (momentum over m_e c) | `"MeV"` |
 # | | `decades` | depth of the log colour scale of the f maps | `12` |
+# | | `pitch_cells` | turns on the `pitch_` plots: a number of cells spread from the beam, `"all"`, or a list of cell indices | `None` (off) |
+# | | `analytic` | `AvalancheParams`, or a list, for the dashed analytic avalanche curves | `None` (off) |
+# | | `combined_per_time` | one combined figure per time, `..._t<ms>ms` | `False` |
 # | `Selection` | `skip` | figure names to leave out, as prefixes or wildcard patterns | `[]` |
 # | | `only` | keep only names matching one of these prefixes or patterns | `[]` |
 #
@@ -102,14 +105,25 @@ print(run.report())
 #   `electric_field_profiles`, `critical_field_ratio_map`,
 #   `generation_rates`, `rate_map_<channel>`.
 # - Kinetic, per radius and range: `f_hot_`, `f_re_` (momentum-pitch maps),
-#   `spectrum_hot_`, `spectrum_re_` (dn/dE), `f_combined_`, `dndp_combined_`
-#   (angle-averaged f and dn/dp of both grids on one momentum axis), each
-#   followed by `<r/a>[_<range>]`.
+#   `spectrum_hot_`, `spectrum_re_` (dn/dE), `pitch_hot_`, `pitch_re_` (f
+#   against p per pitch cell, when `pitch_cells` is set), `f_combined_`,
+#   `dndp_combined_` (angle-averaged f and dn/dp of both grids on one momentum
+#   axis), each followed by `<r/a>[_<range>]`.
+#
+# ### Analytic avalanche distribution
+# `ANALYTIC` holds the parameters of the analytic avalanche f of Embréus et
+# al. 2018, eq. 2.17, drawn dashed on the combined and pitch figures in the
+# colour of the data. The defaults are the DEMO termination case. The
+# `distributions.py` notebook describes every parameter and the option to
+# take E/E_c, Zeff and lnΛ from the run. `ANALYTIC = None` leaves it out.
 #
 # The `<r/a>` tag is the snapped radius, so it depends on the run's radial
 # grid. On an 11-cell grid r/a = 0 becomes `ra0.05` and 0.9 becomes
 # `ra0.86`. Range tags read `Emin-10MeV`, `E1-5MeV` or `pmin-10mec`; the
 # full grid has no tag. Copy names from the `figures.names` output.
+
+# %%
+ANALYTIC = cdo.AvalancheParams(E_over_Ec=50, Z_tot=1.4, lnLambda=14.3)
 
 # %% editable=true deletable=true slideshow={"slide_type": ""}
 sel = Selection(
@@ -124,6 +138,8 @@ sel = Selection(
         ranges=[(None, None), (None, 10)],  # , (None, 5)
         range_unit="MeV",
         decades=12,
+        pitch_cells=None,  # 4 for the pitch_ plots
+        analytic=ANALYTIC,
     ),
     skip=["dndp_", "f_re_*10MeV", "f_hot_*10MeV", "spectrum*10MeV"],
     only=[],
