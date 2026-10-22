@@ -36,7 +36,7 @@ import matplotlib.pyplot as plt
 
 import cdo
 from cdo import figures
-from cdo.selection import FluidSelection, KineticSelection, Selection
+from cdo.selection import DEFAULT_SKIP, FluidSelection, KineticSelection, Selection
 
 cdo.plotting.use_base_style(fontsize=11)
 
@@ -71,6 +71,7 @@ print(run.report())
 # | `FluidSelection` | `times_ms` | list of ms and `"end"`, or `"auto"` | `"auto"` |
 # | | `radii` | r/a values, for traces and `electric_field_<r/a>` | `(0.0, 0.5, 0.9)` |
 # | | `time_range_ms` | `(start, stop)` crop of every fluid time axis, `None` = run edge | `(None, None)` |
+# | | `critical_field_profiles` | add E_c,eff, dashed, to `electric_field_profiles` | `False` |
 # | `KineticSelection` | `times_ms` | list of ms and `"end"`, or `"auto"` | `"auto"` |
 # | | `radii` | r/a values | `(0.0, 0.5)` |
 # | | `ranges` | list of `(min, max)`, one figure each, `None` = grid edge | `[(None, None)]` |
@@ -79,8 +80,14 @@ print(run.report())
 # | | `pitch_cells` | turns on the `pitch_` plots: a number of cells spread from the beam, `"all"`, or a list of cell indices | `None` (off) |
 # | | `analytic` | `AvalancheParams`, or a list, for the dashed analytic avalanche curves | `None` (off) |
 # | | `combined_per_time` | one combined figure per time, `..._t<ms>ms` | `False` |
-# | `Selection` | `skip` | figure names to leave out, as prefixes or wildcard patterns | `[]` |
+# | `Selection` | `skip` | figure names to leave out, as prefixes or wildcard patterns | `DEFAULT_SKIP` |
 # | | `only` | keep only names matching one of these prefixes or patterns | `[]` |
+#
+# `DEFAULT_SKIP` leaves out the time traces and maps of Z_eff and n_cold, the
+# time traces of the current densities, the electric-field time traces
+# (`electric_field_<r/a>`, `electric_field_average`) and `electric_field_map`,
+# so E shows as radial profiles and in `critical_field_ratio_map`. `skip=[]` makes every
+# figure; `skip=[*DEFAULT_SKIP, ...]` adds to it.
 #
 # Fields left out keep their defaults, so
 # `Selection(kinetic=KineticSelection(radii=[0.5]))` changes only the kinetic
@@ -102,7 +109,8 @@ print(run.report())
 #   `runaway_current_density`, `hot_current_density`,
 #   `total_current_density`, `radiated_power`, `effective_charge` (those the
 #   run has); `electric_field_<r/a>`, `electric_field_average`,
-#   `electric_field_profiles`, `critical_field_ratio_map`,
+#   `electric_field_profiles`, `electric_field_map` (signed E, symlog),
+#   `critical_field_ratio_map` (|E|/E_c,eff in labelled bands, black at 1),
 #   `generation_rates`, `rate_map_<channel>`.
 # - Kinetic, per radius and range: `f_hot_`, `f_re_` (momentum-pitch maps),
 #   `spectrum_hot_`, `spectrum_re_` (dn/dE), `pitch_hot_`, `pitch_re_` (f
@@ -141,7 +149,7 @@ sel = Selection(
         pitch_cells=None,  # 4 for the pitch_ plots
         analytic=ANALYTIC,
     ),
-    skip=["dndp_", "f_re_*10MeV", "f_hot_*10MeV", "spectrum*10MeV"],
+    skip=[*DEFAULT_SKIP, "dndp_", "f_re_*10MeV", "f_hot_*10MeV", "spectrum*10MeV"],
     only=[],
 )
 
@@ -230,7 +238,7 @@ figures.build(run, "generation_rates", sel)
 plt.show()
 
 # %%
-figures.build(run, "electric_field_average", sel)
+figures.build(run, "critical_field_ratio_map", sel)
 plt.show()
 
 # %% [markdown]
