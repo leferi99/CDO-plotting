@@ -23,14 +23,26 @@ DREAM stores cell averages, and the analytic f varies over a pitch scale of
 pitch cells near the beam. :func:`distribution` therefore returns the mean of
 f over each pitch cell, integrated in closed form, and the angle averages are
 taken through the same :class:`~cdo.moments.MomentumMoments` code as the data.
+
+E/E_c, Z_tot and lnΛ can also come from the run, at each time and radius:
+:meth:`AvalancheParams.from_run` leaves them unset, and :meth:`~AvalancheParams.resolve`
+fills them from ``|E_field| / Ectot``, ``Zeff`` and ``lnLambdaC``. Ectot is the
+Connor-Hastie field with the total electron density, the E_c of the paper.
+DREAM's Zeff equals the paper's Z_tot only in a fully ionised plasma. The
+pitch-averaged f does not depend on E/E_c, so on the angle averages the run
+values change the curve only through gamma0.
 """
 
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 
 import numpy as np
+
+
+#: Parameters that :meth:`AvalancheParams.from_run` takes from the run.
+RUN_PARAMETERS = ("E_over_Ec", "Z_tot", "lnLambda")
 
 
 @dataclass
@@ -38,25 +50,55 @@ class AvalancheParams:
     """Parameters of the analytic avalanche distribution.
 
     The defaults are the DEMO termination case (E/E_c = 50, Z_tot = 1.4,
-    lnΛ = 14.3, mean energy about 18.5 MeV). ``c_Z`` defaults to
-    sqrt(5 + Z_tot). ``n_re`` (m^-3) fixes the density; ``None`` takes the
-    run's ``n_re`` at each time and radius. ``direction`` is +1 for a beam at
-    xi = +1 (DREAM with E > 0), -1 for xi = -1 (the paper).
+    lnΛ = 14.3, mean energy about 18.5 MeV). ``E_over_Ec``, ``Z_tot`` or
+    ``lnLambda`` set to ``None`` are taken from the run at each time and
+    radius, from the fields named by ``Ec_field``, ``Z_field`` and
+    ``lnLambda_field``; :meth:`from_run` sets all three so. ``c_Z`` defaults
+    to sqrt(5 + Z_tot). ``n_re`` (m^-3) fixes the density; ``None`` takes the
+    run's ``n_re``. ``direction`` is +1 for a beam at xi = +1 (DREAM with
+    E > 0), -1 for xi = -1 (the paper).
     """
 
-    E_over_Ec: float = 50.0
-    Z_tot: float = 1.4
-    lnLambda: float = 14.3
+    E_over_Ec: float | None = 50.0
+    Z_tot: float | None = 1.4
+    lnLambda: float | None = 14.3
     c_Z: float | None = None
     n_re: float | None = None
     direction: int = 1
+    Ec_field: str = "Ectot"
+    Z_field: str = "Zeff"
+    lnLambda_field: str = "lnLambdaC"
 
     def __post_init__(self):
         if self.direction not in (1, -1):
             raise ValueError(f"direction must be +1 or -1, got {self.direction!r}")
 
+    @classmethod
+    def from_run(cls, **kwargs) -> "AvalancheParams":
+        """E/E_c, Z_tot and lnΛ from the run; other fields as given."""
+        return cls(**{name: None for name in RUN_PARAMETERS}, **kwargs)
+
+    @property
+    def run_parameters(self) -> tuple:
+        """Names of the parameters taken from the run."""
+        return tuple(name for name in RUN_PARAMETERS if getattr(self, name) is None)
+
+    @property
+    def kind(self) -> str:
+        """Legend text: which values the curve uses."""
+        run = self.run_parameters
+        if not run:
+            return "set values"
+        return "run values" if len(run) == len(RUN_PARAMETERS) else "run and set values"
+
+    def _require(self):
+        if self.run_parameters:
+            raise ValueError(f"{', '.join(self.run_parameters)} come from the run; "
+                             "call resolve(run, time_index, radial_cell) first")
+
     @property
     def cZ(self) -> float:
+        self._require()
         return math.sqrt(5.0 + self.Z_tot) if self.c_Z is None else float(self.c_Z)
 
     @property
@@ -66,14 +108,82 @@ class AvalancheParams:
 
     def A(self, p) -> np.ndarray:
         """Pitch-width parameter A(p), the inverse width of the beam in xi."""
+        self._require()
         gamma = np.sqrt(1.0 + np.asarray(p, dtype=float) ** 2)
         return (self.E_over_Ec + 1.0) / (self.Z_tot + 1.0) * gamma
 
     @property
+    def values_text(self) -> str:
+        """E/E_c, Z_tot, lnΛ and gamma0, "run" for those taken from the run."""
+        def show(value, fmt):
+            return "run" if value is None else format(value, fmt)
+        text = (f"$E/E_c$ = {show(self.E_over_Ec, '.3g')}, "
+                f"$Z$ = {show(self.Z_tot, '.3g')}, ln$\\Lambda$ = {show(self.lnLambda, '.3g')}")
+        if not self.run_parameters:
+            text += f", $\\gamma_0$ = {self.gamma0:.3g}"
+        return text
+
+    @property
     def label(self) -> str:
-        return (f"analytic avalanche: $E/E_c$ = {self.E_over_Ec:g}, "
-                f"$Z_{{\\rm tot}}$ = {self.Z_tot:g}, ln$\\Lambda$ = {self.lnLambda:g}, "
-                f"$\\gamma_0$ = {self.gamma0:.3g}")
+        return f"analytic avalanche ({self.kind}): {self.values_text}"
+
+    def resolve(self, run, time_index: int, radial_cell: int) -> "Resolved":
+        """These parameters with the run's values filled in at one time and radius."""
+        values, missing = {}, []
+
+        def read(name):
+            data = run.field(name)
+            if data is None:
+                return None
+            value = float(data[time_index, radial_cell])
+            return value if math.isfinite(value) else None
+
+        if self.E_over_Ec is None:
+            E, Ec = read("E_field"), read(self.Ec_field)
+            if E is None or Ec is None or not Ec > 0:
+                missing.append(f"E_field/{self.Ec_field}")
+            else:
+                values["E_over_Ec"] = abs(E) / Ec
+        if self.Z_tot is None:
+            Z = read(self.Z_field)
+            if Z is None:
+                missing.append(self.Z_field)
+            else:
+                values["Z_tot"] = Z
+        if self.lnLambda is None:
+            lnL = read(self.lnLambda_field)
+            if lnL is None:
+                missing.append(self.lnLambda_field)
+            else:
+                values["lnLambda"] = lnL
+        n_re = density_at(run, self, time_index, radial_cell)
+        params = None if missing else replace(self, **values)
+        return Resolved(params, n_re, values, missing)
+
+
+@dataclass
+class Resolved:
+    """:class:`AvalancheParams` at one time and radius, with what came from the run.
+
+    ``params`` is ``None`` when a run field was missing, listed in ``missing``.
+    """
+
+    params: AvalancheParams | None
+    n_re: float
+    from_run: dict = field(default_factory=dict)
+    missing: list = field(default_factory=list)
+
+    @property
+    def drawable(self) -> bool:
+        return self.params is not None and self.n_re > 0
+
+    @property
+    def text(self) -> str:
+        """The values used, for the annotation box."""
+        if self.missing:
+            return "run has no " + ", ".join(self.missing)
+        text = self.params.values_text
+        return text + f", $n_{{\\rm RE}}$ = {self.n_re:.3g} m$^{{-3}}$"
 
 
 def distribution(params: AvalancheParams, p, xi_edges, n_re: float) -> np.ndarray:
