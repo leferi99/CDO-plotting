@@ -125,28 +125,42 @@ Fluid figures use `selection.fluid`:
 - `critical_field_ratio_map`: |E|/E_c,eff over time and radius in discrete colour bands with labelled edges (0, 0.25, 0.5, 0.75, 0.9, 1, 1.1, 1.5, 2, 3, 5, 10, 20, 50, 100), blue below 1 and red above, with the ratio-one contour in black.
 - `generation_rates` and `rate_map_<channel>`: see below.
 
-`Selection.skip` defaults to `cdo.selection.DEFAULT_SKIP`, which leaves out the traces and maps of Z_eff and n_cold, the traces of the current densities, the electric-field traces `electric_field_<r/a>` and `electric_field_average`, and `electric_field_map`, so the field is shown by `electric_field_profiles` and `critical_field_ratio_map`.
+`Selection.skip` defaults to `cdo.selection.DEFAULT_SKIP`, which leaves out:
+
+- the traces and maps of Z_eff and n_cold, which keep their profiles;
+- the traces of the current densities and the temperature;
+- the traces and profiles of the runaway and hot densities and the radiated power, which keep their maps;
+- the electric-field traces `electric_field_<r/a>` and `electric_field_average`, and `electric_field_map`, so the field is shown by `electric_field_profiles` and `critical_field_ratio_map`;
+- `dndp_combined`.
+
 `skip=[]` makes every figure, and `skip=[*DEFAULT_SKIP, ...]` adds to the list.
 
 Kinetic figures use `selection.kinetic`, one file per grid, radius and range:
 
 - `f_<grid>_<r/a>[_<range>]`: momentum-pitch maps at the chosen times, or f(p) curves on an isotropic grid.
 - `spectrum_<grid>_<r/a>[_<range>]`: density per unit kinetic energy, in m^-3 MeV^-1.
-- `pitch_<grid>_<r/a>[_<range>]`: f against momentum, one viridis line per pitch cell, one panel per time, on grids with more than one pitch cell. Made only when `kinetic.pitch_cells` is set: a number of cells spread from the beam, `"all"`, or a list of cell indices (negative from the end).
+- `favg_re_<r/a>[_<range>]`: angle-averaged f of the runaway grid against |p|.
+- `pitch_<grid>_<r/a>[_<range>]`: f against momentum, one viridis line per pitch cell, one panel per time, on grids with more than one pitch cell. `kinetic.pitch_cells` picks the cells: a number spread from the beam (default 4), `"all"`, or a list of cell indices (negative from the end); `None` leaves the plots out.
 
-With both grids enabled, per radius and range:
+`favg_re` and `pitch_re` are also drawn in `kinetic.runaway_zoom_ranges`, 0-40 MeV by default.
+
+With both grids enabled, per radius, in `kinetic.combined_ranges` only (0-10 MeV by default, p up to 20.5 m_e c), to look at the hot-runaway boundary:
 
 - `f_combined_<r/a>[_<range>]`: angle-averaged f of the hot-tail and runaway grids on one momentum axis, with the hot-runaway boundary dashed in grey.
-- `dndp_combined_<r/a>[_<range>]`: the same for the pitch-integrated density per unit momentum, dn/dp.
+- `dndp_combined_<r/a>[_<range>]`: the same for the pitch-integrated density per unit momentum, dn/dp. Skipped by default.
+- `dnde_combined_<r/a>[_<range>]`: dn/dE per MeV of both grids against kinetic energy.
 
-`cdo.plotting.angle_averaged_combined_1D` draws these directly, with times in ms, r/a and a momentum range in m_e c.
+`cdo.plotting.angle_averaged_combined_1D` draws these directly (`moment` = `"distribution"`, `"density"` or `"energy"`), with times in ms, r/a and a momentum range in m_e c.
+
+The momentum on every axis is the total momentum |p| of DREAM's p/ξ grids.
+Time axes start at 0 ms, and momentum and energy axes at 0, even where the data starts later; a cropped time window or a momentum range starts at its own lower end.
 
 ### Analytic avalanche distribution
 
 `kinetic.analytic` adds the analytic avalanche distribution of Embréus et al., J. Plasma Phys. 84 (2018) 905840506, eq. 2.17 (arXiv:1807.04460).
 It takes one `cdo.AvalancheParams` or a list, each drawn with its own line style, dashed, dotted, dash-dotted in list order:
 
-- on `f_combined_` and `dndp_combined_`, over the runaway-grid momenta, in the colour of the data of each time;
+- on `f_combined_`, `dndp_combined_` and `dnde_combined_`, over the runaway-grid momenta, in the colour of the data of each time;
 - on `pitch_re_`, in the colour of the data of each drawn pitch cell.
 
 The parameters are `E_over_Ec`, `Z_tot`, `lnLambda` and `c_Z` (default sqrt(5 + Z_tot)), with defaults E/E_c = 50, Z_tot = 1.4, lnΛ = 14.3.

@@ -99,12 +99,17 @@ def test_default_skip_keeps_profiles_maps_and_drops_field_traces():
     for name in ("effective_charge_profiles", "electron_density_profiles",
                  "ohmic_current_density_profiles", "runaway_current_density_map",
                  "electric_field_profiles", "critical_field_ratio_map",
-                 "temperature_traces"):
+                 "temperature_profiles", "temperature_map", "runaway_density_map",
+                 "hot_density_map", "radiated_power_map", "f_combined_ra0.05",
+                 "dnde_combined_ra0.05", "pitch_re_ra0.05"):
         assert s.wants(name), name
     for name in ("effective_charge_traces", "effective_charge_map", "electron_density_map",
                  "electron_density_traces", "total_current_density_traces",
                  "hot_current_density_traces", "electric_field_ra0.05",
-                 "electric_field_average", "electric_field_map"):
+                 "electric_field_average", "electric_field_map", "temperature_traces",
+                 "runaway_density_traces", "runaway_density_profiles", "hot_density_traces",
+                 "hot_density_profiles", "radiated_power_traces", "radiated_power_profiles",
+                 "dndp_combined_ra0.05"):
         assert not s.wants(name), name
     assert sel.Selection(skip=[]).wants("electric_field_average")
     assert not sel.Selection(skip=[*sel.DEFAULT_SKIP, "currents"]).wants("currents")
@@ -112,3 +117,7 @@ def test_default_skip_keeps_profiles_maps_and_drops_field_traces():
 
 def test_field_profiles_leave_out_the_critical_field_by_default():
     assert sel.FluidSelection().critical_field_profiles is False
+
+
+def test_pitch_plots_are_on_by_default():
+    assert sel.KineticSelection().pitch_cells == 4

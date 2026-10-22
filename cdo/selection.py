@@ -61,13 +61,20 @@ class KineticSelection:
     ``pitch_cells`` turns on the ``pitch_<grid>_*`` line plots and picks
     their pitch cells: a number N for N cells spread from the beam out to
     ``pitch_angle_max_deg``, ``"all"``, or indices into the xi cells (negative
-    from the end). ``None`` leaves the plots out.
+    from the end). ``None`` leaves the plots out; the default is 4 cells.
 
     ``analytic`` is an :class:`~cdo.avalanche.AvalancheParams`, or a list of
     them such as ``[AvalancheParams(), AvalancheParams.from_run()]``, adding
     the analytic avalanche distribution to the combined angle averages and the
     pitch line plots; ``None`` leaves it out. ``combined_per_time`` splits the
     combined figures into one per time, named ``..._t<ms>ms``.
+
+    ``ranges`` apply to the maps, spectra and line plots of each grid. The
+    combined figures, made to look at the hot-runaway boundary, use
+    ``combined_ranges`` instead, 0-10 MeV by default. The runaway-grid line
+    plots (``favg_re`` and ``pitch_re``) add ``runaway_zoom_ranges``, 0-40 MeV
+    by default. All ranges are in ``range_unit``; 10 MeV is p = 20.5 m_e c and
+    40 MeV is p = 79.3 m_e c.
     """
 
     times_ms: str | Sequence = "auto"
@@ -75,15 +82,19 @@ class KineticSelection:
     ranges: Sequence[tuple] = ((None, None),)
     range_unit: str = "MeV"
     decades: float = 12.0
-    pitch_cells: int | str | Sequence[int] | None = None
+    pitch_cells: int | str | Sequence[int] | None = 4
     pitch_angle_max_deg: float = 20.0
     analytic: AvalancheParams | Sequence[AvalancheParams] | None = None
     combined_per_time: bool = False
+    combined_ranges: Sequence[tuple] = ((None, 10.0),)
+    runaway_zoom_ranges: Sequence[tuple] = ((None, 40.0),)
 
 
 #: Figures a :class:`Selection` leaves out unless ``skip`` is given: Z_eff and
-#: n_cold only as radial profiles, current densities as profiles and maps, and
-#: the electric field only as radial profiles, with the E/E_c,eff map. ``skip=[]`` makes every figure;
+#: n_cold only as radial profiles; current densities, temperature and the
+#: densities and radiated power as profiles and maps or maps only; the
+#: electric field as radial profiles and the E/E_c,eff map; no dn/dp combined
+#: figures. ``skip=[]`` makes every figure;
 #: ``skip=[*DEFAULT_SKIP, ...]`` adds to the list.
 DEFAULT_SKIP = (
     "effective_charge_traces",
@@ -94,6 +105,14 @@ DEFAULT_SKIP = (
     "electric_field_ra*",
     "electric_field_average",
     "electric_field_map",
+    "temperature_traces",
+    "radiated_power_traces",
+    "radiated_power_profiles",
+    "runaway_density_traces",
+    "runaway_density_profiles",
+    "hot_density_traces",
+    "hot_density_profiles",
+    "dndp_combined",
 )
 
 
@@ -299,8 +318,10 @@ class Range:
         return keep
 
 
-def ranges(selection: KineticSelection) -> list[Range]:
-    return [Range(lo, hi, selection.range_unit) for lo, hi in selection.ranges]
+def ranges(selection: KineticSelection, which: str = "ranges") -> list[Range]:
+    """One of the range lists of ``selection`` (``ranges``, ``combined_ranges``,
+    ``runaway_zoom_ranges``) as :class:`Range` objects."""
+    return [Range(lo, hi, selection.range_unit) for lo, hi in getattr(selection, which)]
 
 
 # --- record ------------------------------------------------------------------
@@ -319,8 +340,9 @@ def record(run, selection: Selection) -> dict:
         "kinetic": {
             "times_ms": [x.ms for x in snap_times(t, kinetic.times_ms, lines=False)],
             "radii": [asdict(x) for x in snap_radii(r, a, kinetic.radii)],
-            "ranges": [{"tag": x.tag or "full", "p_mec": x.momentum(), "E_MeV": x.energy()}
-                       for x in ranges(kinetic)],
+            **{which: [{"tag": x.tag or "full", "p_mec": x.momentum(), "E_MeV": x.energy()}
+                       for x in ranges(kinetic, which)]
+               for which in ("ranges", "combined_ranges", "runaway_zoom_ranges")},
         },
         "run": {"files": run.files, "t_end_ms": float(t[-1]), "minor_radius_m": a},
     }

@@ -75,3 +75,23 @@ def test_batch_script_one_run(tmp_path):
     run_dir = tmp_path / DATA_FOLDER.parent.name / DATA_FOLDER.name
     assert (run_dir / "currents.png").exists()
     assert not (run_dir / "pdf").exists()  # PDFs are opt-in
+
+
+def test_default_kinetic_names_on_the_reference_run():
+    _need_data()
+    import cdo
+    from cdo import figures
+    from cdo.selection import Selection
+
+    run = cdo.Run.from_folder(DATA_FOLDER)
+    names = figures.names(run, Selection(only=["f_", "favg_", "pitch_", "dnde_", "dndp_",
+                                               "spectrum_"]))
+    radius = names[0].split("_")[-1]
+    combined = [n for n in names if "_combined_" in n]
+    assert combined and all(n.endswith("_Emin-10MeV") for n in combined)
+    assert not any(n.startswith("dndp_") for n in names)
+    for kind in ("favg_re", "pitch_re"):
+        assert f"{kind}_{radius}" in names and f"{kind}_{radius}_Emin-40MeV" in names
+    assert not any(n.endswith("_Emin-40MeV") for n in names
+                   if not n.startswith(("favg_re", "pitch_re")))
+    assert not any(n.startswith("favg_hot") for n in names)

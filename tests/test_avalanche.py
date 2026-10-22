@@ -251,3 +251,36 @@ def test_pitch_panels_get_run_values_and_one_style_per_analytic_entry():
     assert colours[0] != colours[1]
     assert "run values" in _box_text(ax)
     assert "set values" in fig._suptitle.get_text()
+
+
+def test_energy_combined_plot_converts_both_grids_and_starts_at_zero():
+    run = _StubRun()
+    run.reference.arrays.update({"re_p_edges": np.array([4.0, 6.0, 40.0, 80.0])})
+    fig = plotting.angle_averaged_combined_1D(run, "energy", times_ms=["end"],
+                                              analytic=AvalancheParams())
+    ax = fig.axes[0]
+    assert ax.get_xlabel() == plotting.ENERGY_LABEL and ax.get_xlim()[0] == 0.0
+    data, model = [line for line in ax.lines if len(set(line.get_xdata())) > 1][:2]
+    energy = (np.sqrt(1 + run.p**2) - 1) * 0.51099895
+    np.testing.assert_allclose(data.get_xdata()[-3:], energy)
+    np.testing.assert_allclose(model.get_xdata(), energy)
+    # dn/dE = dn/dp dp/dE, and dp/dE = gamma / (p m_e c^2) per MeV for p >> 1 cells.
+    params = AvalancheParams()
+    gamma = np.sqrt(1 + run.p**2)
+    dndp = 1e16 * np.exp(-gamma / params.gamma0) / params.gamma0
+    np.testing.assert_allclose(model.get_ydata()[-1], dndp[-1] * gamma[-1] / run.p[-1] / 0.51099895,
+                               rtol=0.05)
+    boundary = [line for line in ax.lines if len(set(line.get_xdata())) == 1]
+    assert boundary[0].get_xdata()[0] == pytest.approx((np.sqrt(5) - 1) * 0.51099895)
+
+
+def test_runaway_grid_alone_has_no_boundary_line():
+    run = _StubRun()
+    fig = plotting.angle_averaged_combined_1D(run, times_ms=["end"], grids=("runaway",),
+                                              analytic=AvalancheParams())
+    ax = fig.axes[0]
+    curves = [line for line in ax.lines if len(line.get_xdata())]
+    np.testing.assert_array_equal(curves[0].get_xdata(), run.p)
+    assert [line.get_linestyle() for line in curves] == ["-", "--"]
+    assert not [line for line in ax.lines if len(set(line.get_xdata())) == 1]
+    assert ax.get_xlim()[0] == 0.0

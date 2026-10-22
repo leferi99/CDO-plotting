@@ -29,10 +29,13 @@ Kinetic figures (selection ``kinetic``), per grid, radius and range:
 - ``f_<grid>_<r/a>[_<range>]``: momentum-pitch maps at the chosen times, or
   f(p) curves on an isotropic grid.
 - ``spectrum_<grid>_<r/a>[_<range>]``: density per unit kinetic energy.
+- ``favg_re_<r/a>[_<range>]``: angle-averaged f of the runaway grid against
+  |p|, for ``ranges`` and ``runaway_zoom_ranges`` (0-40 MeV by default).
 - ``pitch_<grid>_<r/a>[_<range>]``: f against momentum, one line per pitch
   cell, one panel per time, on grids with more than one pitch cell. Made
   only when ``kinetic.pitch_cells`` is set: a number of cells spread from the
-  beam, ``"all"``, or a list of cells.
+  beam, ``"all"``, or a list of cells. ``pitch_re`` also for
+  ``runaway_zoom_ranges``.
 
 With ``kinetic.analytic`` set, the combined and pitch figures also show the
 analytic avalanche distribution of :mod:`cdo.avalanche`: one set of curves
@@ -41,9 +44,11 @@ in a box or the title.
 
 Combined figures, when the run has both grids, per radius and range:
 
-- ``f_combined_<r/a>[_<range>]`` and ``dndp_combined_<r/a>[_<range>]``: the
-  angle-averaged f, or dn/dp, of the hot-tail and runaway grids on one
-  momentum axis, with the hot-runaway boundary dashed in grey. With
+- ``f_combined_<r/a>[_<range>]``, ``dndp_combined_<r/a>[_<range>]`` and
+  ``dnde_combined_<r/a>[_<range>]``: the angle-averaged f and dn/dp against
+  total momentum |p|, and dn/dE against kinetic energy, of the hot-tail and
+  runaway grids joined on one axis, with the hot-runaway boundary dashed in
+  grey, for ``combined_ranges`` (0-10 MeV by default). With
   ``kinetic.combined_per_time`` one figure per time, ``..._t<ms>ms``.
 
 Colour maps show missing data in white, and on log scales also zero and
@@ -77,8 +82,8 @@ from .selection import (
 
 TIME_LABEL = "Time [ms]"
 RADIUS_LABEL = "Minor radius r [m]"
-MOMENTUM_LABEL = r"Momentum $p$ [$m_e c$]"
-ENERGY_LABEL = "Kinetic energy [MeV]"
+MOMENTUM_LABEL = plotting.MOMENTUM_LABEL
+ENERGY_LABEL = plotting.ENERGY_LABEL
 GRID_NAMES = {"hottail": "hot-tail", "runaway": "runaway"}
 FIELD_OF_GRID = {"hottail": "f_hot", "runaway": "f_re"}
 PREFIX_OF_GRID = {"hottail": "hot", "runaway": "re"}
@@ -149,6 +154,8 @@ class Context:
         self.kinetic_times = snap_times(self.t_ms, selection.kinetic.times_ms, lines=False)
         self.kinetic_radii = snap_radii(self.r, self.a, selection.kinetic.radii)
         self.ranges = ranges(selection.kinetic)
+        self.combined_ranges = ranges(selection.kinetic, "combined_ranges")
+        self.zoom_ranges = ranges(selection.kinetic, "runaway_zoom_ranges")
 
     def field(self, name: str) -> np.ndarray:
         value = self.run.field(name)
@@ -165,6 +172,13 @@ class Context:
     def derived_cache(self) -> dict:
         """Per-run cache of derived arrays, shared by every Context of the run."""
         return self.run.derived_cache
+
+
+def _time_limits(ctx: Context) -> tuple:
+    """Time-axis limits: from 0 ms, or from the start of a cropped window."""
+    t = ctx.t_ms[ctx.window]
+    lower = 0.0 if ctx.sel.fluid.time_range_ms[0] is None else float(t[0])
+    return lower, float(t[-1])
 
 
 def _time_colours(n: int):
@@ -213,6 +227,7 @@ def _currents(ctx: Context):
             ax.plot(t, np.asarray(value)[w] / 1e6, label=label, **style)
         ax.axhline(0, color="k", lw=0.5)
         ax.set_xlabel(TIME_LABEL)
+        ax.set_xlim(*_time_limits(ctx))
         ax.set_ylabel("Current [MA]")
         ax.set_title("Currents")
         _legend_outside(ax)
@@ -234,6 +249,7 @@ def _traces(ctx: Context, q: Quantity):
                 label="volume average")
         _set_scale(ax, q.line_scale)
         ax.set_xlabel(TIME_LABEL)
+        ax.set_xlim(*_time_limits(ctx))
         ax.set_ylabel(f"{q.label} [{q.unit}]" if q.unit else q.label)
         ax.set_title(q.label)
         _legend_outside(ax)
@@ -268,7 +284,7 @@ def _map(ctx: Context, q: Quantity):
         fig = plotting.basic_2D(
             data, ctx.r, ctx.t_ms[w], mesh=True, normalization=q.map_scale,
             logdiff=q.decades, xlabel=RADIUS_LABEL, ylabel=TIME_LABEL,
-            ylim=(ctx.t_ms[w][0], ctx.t_ms[w][-1]), title=label,
+            ylim=_time_limits(ctx), title=label,
             cbarlabel=(f"{label} [{q.unit}]" if q.unit else label),
         )
     return fig
@@ -297,6 +313,7 @@ def _electric_field(ctx: Context, radius: Radius | None):
                     label=r"$E_{\rm c,tot}$ Connor-Hastie, all electrons")
         ax.set_yscale("log")
         ax.set_xlabel(TIME_LABEL)
+        ax.set_xlim(*_time_limits(ctx))
         ax.set_ylabel("Electric field [V/m]")
         ratio_ax = ax.twinx()
         ratio_ax.grid(False)
@@ -342,7 +359,7 @@ def _critical_field_ratio_map(ctx: Context):
     with plt.rc_context(plotting.MESH_RC):
         return plotting.critical_field_ratio_bands_2D(
             E[w], eceff[w], ctx.r, ctx.t_ms[w], xlabel=RADIUS_LABEL, ylabel=TIME_LABEL,
-            ylim=(ctx.t_ms[w][0], ctx.t_ms[w][-1]),
+            ylim=_time_limits(ctx),
             title=r"$|E_\parallel| / E_{\rm c,eff}$",
         )
 
@@ -358,7 +375,7 @@ def _electric_field_map(ctx: Context):
         return plotting.basic_2D(
             E[w], ctx.r, ctx.t_ms[w], mesh=True, normalization="symlog",
             linthresh=E_MAP_LINTHRESH, xlabel=RADIUS_LABEL, ylabel=TIME_LABEL,
-            ylim=(ctx.t_ms[w][0], ctx.t_ms[w][-1]), title=r"$E_\parallel$",
+            ylim=_time_limits(ctx), title=r"$E_\parallel$",
             cbarlabel=r"$E_\parallel$ [V/m], symlog, linear within $\pm$"
                       f"{E_MAP_LINTHRESH:g}",
         )
@@ -397,6 +414,7 @@ def _generation_rates(ctx: Context):
         ax.set_yscale("symlog", linthresh=linthresh)
         ax.set_yticks(plotting.symlog_ticks(linthresh, peak))
         ax.set_xlabel(TIME_LABEL)
+        ax.set_xlim(*_time_limits(ctx))
         ax.set_ylabel(r"Volume-averaged rate [m$^{-3}$ s$^{-1}$]")
         ax.set_title("Runaway rates: net change and its terms")
         _legend_outside(ax)
@@ -420,7 +438,7 @@ def _rate_map(ctx: Context, key: str):
             normalization="symlog" if signed else "log",
             logdiff=8, linthresh=peak * 1e-6,
             datamin=-peak if signed else None, datamax=peak if signed else None,
-            xlabel=RADIUS_LABEL, ylabel=TIME_LABEL, ylim=(ctx.t_ms[w][0], ctx.t_ms[w][-1]),
+            xlabel=RADIUS_LABEL, ylabel=TIME_LABEL, ylim=_time_limits(ctx),
             title=channel.label, cbarlabel=r"Rate [m$^{-3}$ s$^{-1}$]",
         )
 
@@ -499,6 +517,7 @@ def _distribution(ctx: Context, grid: str, radius: Radius, rng):
             ax.set_title(tm.label, fontsize="small")
         for ax in axes.flat[n:]:
             ax.set_visible(False)
+        axes.flat[0].set_xlim(left=rng.momentum()[0] or 0.0)
         for ax in axes[-1]:
             ax.set_xlabel(MOMENTUM_LABEL, fontsize="small")
         for ax in axes[:, 0]:
@@ -524,6 +543,14 @@ def _combined(ctx: Context, moment: str, radius: Radius, rng, time: Time | None 
         title=title)
 
 
+def _runaway_average(ctx: Context, grid: str, radius: Radius, rng):
+    kin = ctx.sel.kinetic
+    return plotting.angle_averaged_combined_1D(
+        ctx.run, "distribution", times_ms=kin.times_ms, r_over_a=radius.requested,
+        p_range=rng.momentum(), analytic=kin.analytic, grids=("runaway",),
+        title=f"Angle-averaged f, {_kinetic_title(grid, radius, rng)}")
+
+
 def _pitch_lines(ctx: Context, grid: str, radius: Radius, rng):
     kin = ctx.sel.kinetic
     return plotting.pitch_resolved_1D(
@@ -546,6 +573,7 @@ def _isotropic_distribution(ctx, grid, radius, rng, p, frames):
         for c, (tm, data) in zip(_time_colours(len(frames)), frames):
             ax.plot(p, _line_values(data[0], "log"), color=c, label=tm.label)
         ax.set_yscale("log")
+        ax.set_xlim(left=rng.momentum()[0] or 0.0)
         ax.set_xlabel(MOMENTUM_LABEL)
         ax.set_ylabel(r"$f$ [m$^{-3}$ $(m_e c)^{-3}$]")
         ax.set_title(_kinetic_title(grid, radius, rng) + " (isotropic grid)", fontsize="medium")
@@ -579,6 +607,7 @@ def _spectrum(ctx: Context, grid: str, radius: Radius, rng):
             ax.plot(kinetic_MeV[cols], _line_values(dnde[tm.index, radius.cell, cols], "log"),
                     color=c, label=tm.label)
         ax.set_yscale("log")
+        ax.set_xlim(left=rng.energy()[0] or 0.0)
         ax.set_xlabel(ENERGY_LABEL)
         ax.set_ylabel(r"$dn/dE$ [m$^{-3}$ MeV$^{-1}$]")
         ax.set_title("Energy spectrum, " + _kinetic_title(grid, radius, rng), fontsize="medium")
@@ -622,10 +651,14 @@ def plan(run, selection: Selection | None = None) -> list[tuple[str, Callable]]:
         if not ctx.grid_on(grid):
             continue
         short = PREFIX_OF_GRID[grid]
+        zooms = [z for z in ctx.zoom_ranges if z not in ctx.ranges] \
+            if grid == "runaway" else []
         for rad in ctx.kinetic_radii:
-            for rng in ctx.ranges:
+            for rng in [*ctx.ranges, *zooms]:
                 suffix = f"_{rad.tag}" + (f"_{rng.tag}" if rng.tag else "")
-                builders = [("f", _distribution), ("spectrum", _spectrum)]
+                builders = [] if rng in zooms else [("f", _distribution), ("spectrum", _spectrum)]
+                if grid == "runaway":
+                    builders.append(("favg", _runaway_average))
                 if _pitch_resolved(ctx, grid):
                     builders.append(("pitch", _pitch_lines))
                 for kind, builder in builders:
@@ -633,9 +666,10 @@ def plan(run, selection: Selection | None = None) -> list[tuple[str, Callable]]:
                                   lambda b=builder, g=grid, r=rad, x=rng: b(ctx, g, r, x)))
     if ctx.grid_on("hottail") and ctx.grid_on("runaway"):
         for rad in ctx.kinetic_radii:
-            for rng in ctx.ranges:
+            for rng in ctx.combined_ranges:
                 suffix = f"_{rad.tag}" + (f"_{rng.tag}" if rng.tag else "")
-                for kind, moment in (("f", "distribution"), ("dndp", "density")):
+                for kind, moment in (("f", "distribution"), ("dndp", "density"),
+                                     ("dnde", "energy")):
                     if not ctx.sel.kinetic.combined_per_time:
                         items.append((f"{kind}_combined{suffix}",
                                       lambda m=moment, r=rad, x=rng: _combined(ctx, m, r, x)))
@@ -784,6 +818,8 @@ def compare(runs: dict, out=None, *, time_shift_ms: dict | None = None,
                     else:
                         pad = 0.05 * (values.max() - values.min()) or 0.05
                         ax.set_ylim(values.min() - pad, values.max() + pad)
+            if not time_shift_ms and t_lo is None:
+                ax.set_xlim(left=0.0)
             ax.set_xlabel(TIME_LABEL + (" (shifted)" if time_shift_ms else ""))
             ax.set_ylabel(ylabel)
             _legend_outside(ax)

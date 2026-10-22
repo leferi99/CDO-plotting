@@ -506,7 +506,7 @@ def distribution_momentum_2D(
     axes.set_ylim(ylim)
     cbar = fig.colorbar(mesh, ax=axes, extend="min")
     cbar.set_label(cbarlabel)
-    axes.set_xlabel(xlabel or r"Momentum normalized to $m_e c$")
+    axes.set_xlabel(xlabel or MOMENTUM_LABEL)
     axes.set_ylabel(ylabel or "Pitch angle [degrees]")
     axes.set_title(title)
 
@@ -562,7 +562,7 @@ def distribution_momentum_panels(
     for ax in axes.flat[n:]:
         ax.set_visible(False)
     for ax in axes[-1]:
-        ax.set_xlabel(r"$p$ [$m_e c$]", fontsize="small")
+        ax.set_xlabel(MOMENTUM_LABEL, fontsize="small")
     for ax in axes[:, 0]:
         ax.set_ylabel("Pitch angle [deg]", fontsize="small")
     cbar = fig.colorbar(mesh, ax=axes, shrink=0.9, extend="min")
@@ -603,18 +603,48 @@ def angle_averaged_momentum_1D(
     axes.scatter(p, data)
     axes.set_yscale("log")
     axes.grid(True, which="both", linestyle="--")
-    axes.set_xlabel(xlabel or r"Momentum normalized to $m_e c$")
+    axes.set_xlabel(xlabel or MOMENTUM_LABEL)
     axes.set_ylabel(ylabel or r"Angle-averaged distribution [1/m$^3$]")
     axes.set_title(title)
 
     return _finish(fig, folder, savename, dpi)
 
 
+#: Momentum axis label: DREAM's p/xi grids store the total momentum |p|.
+MOMENTUM_LABEL = r"Total momentum $|p|$ [$m_e c$]"
+#: Energy axis label.
+ENERGY_LABEL = "Kinetic energy [MeV]"
+#: Electron rest energy in MeV.
+_MEC2_MEV = 0.51099895
+
 #: y-axis labels of :func:`angle_averaged_combined_1D`, by moment.
 _COMBINED_YLABELS = {
     "distribution": r"$\langle f\rangle$ [m$^{-3}$ $(m_e c)^{-3}$]",
     "density": r"$dn/dp$ [m$^{-3}$ $(m_e c)^{-1}$]",
+    "energy": r"$dn/dE$ [m$^{-3}$ MeV$^{-1}$]",
 }
+
+
+def _kinetic_MeV(p):
+    return (np.sqrt(1.0 + np.asarray(p, dtype=float) ** 2) - 1.0) * _MEC2_MEV
+
+
+def _per_MeV(run, prefix):
+    """Factor turning dn/dp on a grid into dn/dE per MeV, ``(p,)``."""
+    from .energy import J_PER_ENERGY_UNIT, EnergyGrid
+
+    grid = EnergyGrid.from_momentum(run.reference.read(f"{prefix}_p"),
+                                    run.reference.read(f"{prefix}_p_edges"))
+    return grid.dp_dE * J_PER_ENERGY_UNIT["MeV"]
+
+
+def _start_at(axes, lower, axis="x"):
+    """Start an axis at ``lower``, 0 for an open range, keeping the upper limit."""
+    lower = 0.0 if lower is None else lower
+    if axis == "x":
+        axes.set_xlim(left=lower)
+    else:
+        axes.set_ylim(bottom=lower)
 
 #: Line styles of the analytic curves, by position in the ``analytic`` list.
 ANALYTIC_STYLES = ("--", ":", "-.")
@@ -673,6 +703,7 @@ def angle_averaged_combined_1D(
     figsize=(9, 5),
     ylim=(None, None),
     analytic=None,
+    grids=("hottail", "runaway"),
     xlabel=None,
     ylabel=None,
     title=None,
@@ -682,8 +713,12 @@ def angle_averaged_combined_1D(
 ):
     """Hot-tail and runaway angle averages joined on one momentum axis.
 
-    ``moment`` is ``"distribution"`` for the pitch-averaged f or ``"density"``
-    for dn/dp. ``times_ms`` is a list of times in ms and ``"end"`` entries, or
+    ``grids`` picks the grids, in order of momentum: both by default, or
+    ``("runaway",)`` for the runaway grid alone, without the boundary line.
+
+    ``moment`` is ``"distribution"`` for the pitch-averaged f, ``"density"``
+    for dn/dp, both against total momentum |p|, or ``"energy"`` for dn/dE per
+    MeV against kinetic energy. ``times_ms`` is a list of times in ms and ``"end"`` entries, or
     ``"auto"`` for the standard ladder of the kinetic figures. ``r_over_a`` is
     the radius as r/a. Both are snapped to the stored data, as a
     :class:`~cdo.selection.Selection` is. ``p_range`` keeps the momentum cells
@@ -707,22 +742,36 @@ def angle_averaged_combined_1D(
 
     if moment not in _COMBINED_YLABELS:
         raise ValueError(f"moment must be one of {list(_COMBINED_YLABELS)}, got {moment!r}")
-    hot = _cached_angle_average(run, "hottail", moment)
-    re = _cached_angle_average(run, "runaway", moment)
-    if hot is None or re is None:
-        raise ValueError("both the hot-tail and the runaway grid must be enabled")
-    p = np.concatenate([run.reference.read("hot_p"), run.reference.read("re_p")])
-    p_boundary = run.reference.read("hot_p_edges")[-1]
+    energy = moment == "energy"
+    basis = "density" if energy else moment
+    grids = tuple(grids)
+    prefixes = {"hottail": "hot", "runaway": "re"}
+    parts = []
+    for grid in grids:
+        values = _cached_angle_average(run, grid, basis)
+        if values is None:
+            raise ValueError(f"the {grid} grid must be enabled")
+        if energy:
+            values = values * _per_MeV(run, prefixes[grid])
+        parts.append(values)
+    data = np.concatenate(parts, axis=-1)
+    p = np.concatenate([run.reference.read(f"{prefixes[g]}_p") for g in grids])
+    joined = len(grids) > 1
+    p_boundary = run.reference.read(f"{prefixes[grids[0]]}_p_edges")[-1] if joined else None
+    x = _kinetic_MeV(p) if energy else p
+    if joined:
+        x_boundary = float(_kinetic_MeV(p_boundary)) if energy else p_boundary
+    n_re = parts[-1].shape[-1] if grids[-1] == "runaway" else 0
     lo, hi = p_range
     keep = np.ones(p.shape, dtype=bool)
     if lo is not None:
         keep &= p >= lo
     if hi is not None:
         keep &= p <= hi
-    keep_re = keep[-re.shape[-1]:]
+    keep_re = keep[len(p) - n_re:]
     times = snap_times(run.timegrid_ms, times_ms, lines=False)
     radius = snap_radii(run.radialgrid, run.minor_radius, [r_over_a])[0]
-    models = _analytic_list(analytic)
+    models = _analytic_list(analytic) if n_re else []
     single = len(times) == 1
 
     box = []
@@ -733,9 +782,9 @@ def angle_averaged_combined_1D(
         else:
             palette = plt.cm.viridis(np.linspace(0.9, 0.0, max(len(times), 1)))
         for c, tm in zip(palette, times):
-            values = np.concatenate([hot[tm.index, radius.cell], re[tm.index, radius.cell]])
+            values = data[tm.index, radius.cell]
             values = np.where(values > 0, values, np.nan)
-            axes.plot(p[keep], values[keep], color=c, label=tm.label)
+            axes.plot(x[keep], values[keep], color=c, label=tm.label)
             for k, params in enumerate(models):
                 resolved = params.resolve(run, tm.index, radius.cell)
                 if params.run_parameters:
@@ -750,11 +799,12 @@ def angle_averaged_combined_1D(
                       label=f"analytic, {params.kind}")
             if not params.run_parameters:
                 box.insert(0, f"set values: {params.values_text}")
-        if (lo is None or p_boundary >= lo) and (hi is None or p_boundary <= hi):
-            axes.axvline(p_boundary, color="grey", linestyle="--", linewidth=1.0)
+        if joined and (lo is None or p_boundary >= lo) and (hi is None or p_boundary <= hi):
+            axes.axvline(x_boundary, color="grey", linestyle="--", linewidth=1.0)
         axes.set_yscale("log")
         axes.set_ylim(ylim)
-        axes.set_xlabel(xlabel or r"Momentum normalized to $m_e c$")
+        _start_at(axes, None if lo is None else (float(_kinetic_MeV(lo)) if energy else lo))
+        axes.set_xlabel(xlabel or (ENERGY_LABEL if energy else MOMENTUM_LABEL))
         axes.set_ylabel(ylabel or _COMBINED_YLABELS[moment])
         axes.set_title(title or radius.label, fontsize="medium")
         axes.legend(fontsize="small", loc="upper left", bbox_to_anchor=(1.01, 1.0))
@@ -774,10 +824,14 @@ def _plot_analytic_average(axes, run, resolved, moment, radial_cell, keep, **sty
     """Analytic angle average on the runaway-grid momenta inside ``keep``."""
     from . import avalanche
 
+    energy = moment == "energy"
     values = avalanche.angle_average(run, "runaway", radial_cell, resolved.params,
-                                     resolved.n_re, moment)
+                                     resolved.n_re, "density" if energy else moment)
+    p = run.reference.read("re_p")
+    if energy:
+        values = values * _per_MeV(run, "re")
     values = np.where(values > 0, values, np.nan)
-    axes.plot(run.reference.read("re_p")[keep], values[keep], **style)
+    axes.plot((_kinetic_MeV(p) if energy else p)[keep], values[keep], **style)
 
 
 def pick_pitch_cells(xi, cells=DEFAULT_PITCH_CELLS, *, direction=1,
@@ -903,8 +957,9 @@ def pitch_resolved_1D(
             ax.set_visible(False)
         if vmax > 0:
             axes.flat[0].set_ylim(vmax * 10.0**-decades, vmax * 3)
+        _start_at(axes.flat[0], lo)
         for ax in axes[-1]:
-            ax.set_xlabel(r"$p$ [$m_e c$]", fontsize="small")
+            ax.set_xlabel(MOMENTUM_LABEL, fontsize="small")
         for ax in axes[:, 0]:
             ax.set_ylabel(r"$f$ [m$^{-3}$ $(m_e c)^{-3}$]", fontsize="small")
         handles, labels = axes.flat[0].get_legend_handles_labels()
