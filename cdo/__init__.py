@@ -1,5 +1,6 @@
 """Consistent plotting of DREAM output files across DREAM versions."""
 
+from .avalanche import AvalancheParams
 from .concat import InconsistentRunWarning, Run
 from .derived import IonSpecies, cell_volumes, parse_ions, radial_integral
 from .energy import EnergyGrid
@@ -14,7 +15,7 @@ from .io import (
 )
 from .moments import MomentumMoments, current
 from . import plotting
-from . import figures, paths, selection
+from . import avalanche, figures, paths, selection
 from .picker import pick_runs
 from .selection import FluidSelection, KineticSelection, Selection
 from .schema import (
@@ -27,6 +28,8 @@ from .schema import (
 )
 
 __all__ = [
+    "AvalancheParams",
+    "avalanche",
     "DuplicatePathWarning",
     "EnergyGrid",
     "FIELDS",
