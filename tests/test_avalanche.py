@@ -225,6 +225,7 @@ def test_single_time_combined_plot_uses_dark_data_and_two_analytic_styles():
     assert [line.get_linestyle() for line in curves] == ["-", "--", ":"]
     data_colour = matplotlib.colors.to_rgba(curves[0].get_color())
     assert data_colour == plt.cm.viridis(plotting.SINGLE_TIME_SHADE)
+    assert all(matplotlib.colors.to_rgba(line.get_color()) == data_colour for line in curves)
     text = _box_text(ax)
     assert "set values" in text and "run values, t = 1 ms" in text and "12" in text
 
@@ -245,5 +246,8 @@ def test_pitch_panels_get_run_values_and_one_style_per_analytic_entry():
                                      analytic=[AvalancheParams(), AvalancheParams.from_run()])
     ax = fig.axes[0]
     assert [line.get_linestyle() for line in ax.lines] == ["-", "-", "--", "--", ":", ":"]
+    colours = [matplotlib.colors.to_rgba(line.get_color()) for line in ax.lines]
+    assert colours[0:2] == colours[2:4] == colours[4:6]  # analytic in the data colour per cell
+    assert colours[0] != colours[1]
     assert "run values" in _box_text(ax)
     assert "set values" in fig._suptitle.get_text()

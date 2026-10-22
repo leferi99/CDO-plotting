@@ -141,8 +141,8 @@ With both grids enabled, per radius and range:
 `kinetic.analytic` adds the analytic avalanche distribution of Embréus et al., J. Plasma Phys. 84 (2018) 905840506, eq. 2.17 (arXiv:1807.04460).
 It takes one `cdo.AvalancheParams` or a list, each drawn with its own line style, dashed, dotted, dash-dotted in list order:
 
-- on `f_combined_` and `dndp_combined_`, over the runaway-grid momenta, in the colour of each time, or from inferno when the figure has one time;
-- on `pitch_re_`, in the inferno colour of each drawn pitch cell.
+- on `f_combined_` and `dndp_combined_`, over the runaway-grid momenta, in the colour of the data of each time;
+- on `pitch_re_`, in the colour of the data of each drawn pitch cell.
 
 The parameters are `E_over_Ec`, `Z_tot`, `lnLambda` and `c_Z` (default sqrt(5 + Z_tot)), with defaults E/E_c = 50, Z_tot = 1.4, lnΛ = 14.3.
 A parameter set to `None` comes from the run at each time and radius: E/E_c = |E_field| / Ectot, Z = Zeff, lnΛ = lnLambdaC, with the field names overridable.
@@ -154,7 +154,7 @@ The analytic f is averaged over each pitch cell and angle-averaged through the s
 The pitch-averaged f does not depend on E/E_c, so on the combined figures the run values change the curve only through γ0.
 
 `kinetic.combined_per_time = True` splits the combined figures into one per time, `f_combined_<r/a>[_<range>]_t<ms>ms`.
-`kinetic.pitch_cells = 3` draws three pitch cells spread from the beam out to `kinetic.pitch_angle_max_deg` (20°).
+`kinetic.pitch_cells = 4` draws four pitch cells spread from the beam out to `kinetic.pitch_angle_max_deg` (20°).
 
 ### Runaway rate channels
 
