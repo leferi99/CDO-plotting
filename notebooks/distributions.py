@@ -16,8 +16,9 @@
 # %% [markdown]
 # # Distribution functions of one run
 #
-# The kinetic figures only: momentum-pitch maps of f and energy spectra per
-# grid, and the angle-averaged f and dn/dp of both grids on one momentum axis.
+# The kinetic figures only: momentum-pitch maps of f, f per pitch cell and
+# energy spectra per grid, and the angle-averaged f and dn/dp of both grids on
+# one momentum axis, optionally with the analytic avalanche distribution.
 # Each (radius, range) pair is one figure, with one panel or curve per time.
 
 # %%
@@ -60,14 +61,17 @@ print(run.report())
 # | `radii` | r/a values | `(0.0, 0.5)` |
 # | `ranges` | list of `(min, max)`, one figure each, `None` = grid edge | `[(None, None)]` |
 # | `range_unit` | `"MeV"` (kinetic energy) or `"mec"` (momentum over m_e c) | `"MeV"` |
-# | `decades` | depth of the log colour scale of the f maps | `12` |
+# | `decades` | depth of the log colour scale of the f maps and pitch plots | `12` |
+# | `pitch_cells` | turns on the `pitch_` plots: `"all"`, or indices into the xi cells, negative from the end | `None` (no pitch plots) |
+# | `analytic` | `AvalancheParams` for the dashed analytic curves, `None` for none | `None` |
 #
 # `only` and `skip` take figure-name prefixes, or wildcard patterns with `*`,
 # `?` or `[...]` matched against the whole name. The kinetic names are
 # `f_hot_`, `f_re_` (momentum-pitch maps), `spectrum_hot_`, `spectrum_re_`
-# (dn/dE), `f_combined_` and `dndp_combined_` (angle-averaged f and dn/dp of
-# both grids on one momentum axis, the hot-runaway boundary dashed grey),
-# each followed by `<r/a>[_<range>]`. `only=["f_combined_", "dndp_combined_"]`
+# (dn/dE), `pitch_hot_`, `pitch_re_` (f against p, one line per pitch cell,
+# on grids with more than one pitch cell, when `pitch_cells` is set), `f_combined_` and `dndp_combined_`
+# (angle-averaged f and dn/dp of both grids on one momentum axis, the
+# hot-runaway boundary dashed grey), each followed by `<r/a>[_<range>]`. `only=["f_combined_", "dndp_combined_"]`
 # keeps just the combined plots; `only=["f_", "spectrum_"]` keeps every map,
 # spectrum and combined f. `skip=["spectrum_*_Emin-10MeV"]` drops the spectra
 # of that range at every radius, `only=["*_combined_*_Emin-10MeV"]` keeps the
@@ -78,7 +82,38 @@ print(run.report())
 # tags read `Emin-10MeV`, `E1-5MeV` or `pmin-10mec`; the full grid has no
 # tag. Copy names from the printed `figures.names` list.
 
-# %% editable=true deletable=true slideshow={"slide_type": ""}
+# %% [markdown]
+# ## Analytic avalanche distribution
+# Eq. (2.17) of Embréus et al., J. Plasma Phys. 84 (2018) 905840506
+# (arXiv:1807.04460): an avalanche-dominated runaway population in a uniform
+# plasma, f ∝ exp[-γ/γ0 - A(1 - ξ)] with A = (E/E_c + 1) γ / (Z_tot + 1)
+# and γ0 = c_Z lnΛ. The defaults are the DEMO termination case,
+# γ0 m_e c² ≈ 18.5 MeV.
+#
+# | Field | Meaning | Default |
+# |---|---|---|
+# | `E_over_Ec` | E/E_c | `50` |
+# | `Z_tot` | total charge | `1.4` |
+# | `lnLambda` | Coulomb logarithm | `14.3` |
+# | `c_Z` | `None` for sqrt(5 + Z_tot) | `None` |
+# | `n_re` | density in m^-3, `None` for the run's n_re at each time and radius | `None` |
+# | `direction` | `+1` beam at ξ = +1 (DREAM with E > 0), `-1` at ξ = -1 (the paper) | `+1` |
+#
+# The analytic f is averaged over each pitch cell, since its width in ξ
+# (about 1/A) is below the cell size near the beam, and the combined plots
+# average it the same way as the data. Set `ANALYTIC = None` to leave it out.
+# The cell prints the pitch cells, for choosing `pitch_cells`.
+
+# %%
+ANALYTIC = cdo.AvalancheParams(E_over_Ec=50, Z_tot=1.4, lnLambda=14.3, c_Z=None,
+                               n_re=None, direction=+1)
+print(f"gamma0 = {ANALYTIC.gamma0:.1f}, mean energy = {ANALYTIC.gamma0 * 0.511:.1f} MeV")
+xi = run.reference.read("re_xi")
+if xi is not None:
+    for i, x in enumerate(xi):
+        print(f"runaway pitch cell {i:3d} ({i - len(xi):4d}): xi = {x:.5f}")
+
+# %%
 sel = Selection(
     kinetic=KineticSelection(
         times_ms=[0, 1, 2, 5, 10, 15, 20, 25, 30, 40, 50, "end"],
@@ -86,6 +121,8 @@ sel = Selection(
         ranges=[(None, 10)],
         range_unit="MeV",
         decades=12,
+        pitch_cells=None,  # "all" or e.g. [-1, -2, -3, -4] for the pitch_ plots
+        analytic=ANALYTIC,
     ),
     only=["f_combined_"],  #  "dndp_"
 )
@@ -120,6 +157,13 @@ print("\n".join(fn))
 #                                          ranges=[(1, 5)]))
 # print(figures.names(run, one))
 # figures.build(run, "f_re_ra0.23_E1-5MeV", one)
+# plt.show()
+# ```
+#
+# **Pitch lines directly**, with the analytic curves dashed:
+# ```python
+# plotting.pitch_resolved_1D(run, "runaway", times_ms=[50, "end"], r_over_a=0.0,
+#                            pitch_cells=[-1, -2, -3, -4], analytic=ANALYTIC)
 # plt.show()
 # ```
 #
