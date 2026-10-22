@@ -12,7 +12,8 @@ Usage:
     python scripts/plot_all_runs.py                      # all groups -> $CDO_FIGURE_ROOT or ./plots
     python scripts/plot_all_runs.py --group demo_jorek   # one group
     python scripts/plot_all_runs.py --only ar0p3pct      # substring filter
-    python scripts/plot_all_runs.py --runs-root /path/output --glob "tauw_*"
+    python scripts/plot_all_runs.py --runs-root /path/runs --glob "tauw_*"
+    python scripts/plot_all_runs.py --runs-root /path/output --glob "iter-nrt/*"
     python scripts/plot_all_runs.py --pdf                # PDF copies as well
 """
 
@@ -49,11 +50,16 @@ DREAM_RUNS_OUTPUT = cdo.paths.collection("dream_runs")
 DEMO_JOREK_RUNS = cdo.paths.collection("demo_jorek")
 
 #: Campaigns swept by default: name, output root, folder globs, tag prefix.
+#: Runs sit one campaign folder down, ``<collection>/<campaign>/<run>``, except
+#: the first-build DEMO JOREK runs, kept as their own group because the
+#: bounce-orbit reruns carry the same names.
 GROUPS = [
     ("iter_nonregression", DREAM_RUNS_OUTPUT,
-     ("iter_dthmode24_*", "tol_*"), "iter_dthmode24_"),
-    ("demo2026_vde", DREAM_RUNS_OUTPUT, ("demo2026_*",), "demo2026_"),
-    ("demo_jorek", DEMO_JOREK_RUNS, ("tauw_*",), ""),
+     ("iter-nrt/*", "iter-abstol/*"), "iter_dthmode24_"),
+    ("iter_numerics", DREAM_RUNS_OUTPUT, ("iter-numerics/*",), "iter_dthmode24_"),
+    ("demo2026_vde", DREAM_RUNS_OUTPUT, ("demo2026/*",), "demo2026_"),
+    ("demo_jorek", DEMO_JOREK_RUNS, ("fix-wrapped-bounce-orbits/tauw_*",), ""),
+    ("demo_jorek_first_build", DEMO_JOREK_RUNS, ("tauw_*",), ""),
 ]
 
 #: JOREK time of the DREAM start in the JOREK benchmark: the time of
@@ -170,7 +176,7 @@ def sweep_group(group, runs_root, globs, prefix, args):
     compare_made = []
     if not args.no_compare and runs:
         shift, references, styles = {}, {}, {}
-        if group == "demo_jorek":
+        if group.startswith("demo_jorek"):
             shift = {tag: JOREK_T0_MS for tag in runs}
             t_ref, i_ref = zip(*JOREK_IP_POINTS)
             references["compare_plasma_current"] = [("JOREK", t_ref, i_ref, JOREK_MARKER)]

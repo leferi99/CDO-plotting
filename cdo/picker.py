@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from fnmatch import fnmatch
 from pathlib import Path
 
 import h5py
@@ -37,11 +38,14 @@ class RunInfo:
     commit: str
     avalanche: str
     unfinished_leg: bool
+    #: Path relative to its collection, e.g. ``iter-nrt/<run>``. Run names repeat
+    #: across campaigns, so labels show this. Empty means the folder name.
+    name: str = ""
 
     @property
     def label(self) -> str:
         flag = "  [last leg failed]" if self.unfinished_leg else ""
-        return (f"{self.path.name}  |  {self.legs} legs, {self.t_end_ms:.4g} ms, "
+        return (f"{self.name or self.path.name}  |  {self.legs} legs, {self.t_end_ms:.4g} ms, "
                 f"{self.avalanche}, DREAM {self.commit}{flag}")
 
 
@@ -60,7 +64,7 @@ def _manifest_end_time(folder: Path, nfiles: int) -> float | None:
     return None
 
 
-def _info(folder: Path) -> RunInfo | None:
+def _info(folder: Path, name: str = "") -> RunInfo | None:
     files = find_outputs(folder)
     if not files:
         return None
@@ -76,22 +80,32 @@ def _info(folder: Path) -> RunInfo | None:
         avalanche = (AVALANCHE.get(int(mode[()].ravel()[0]), "?")
                      if mode is not None else "?")
     unfinished = any(folder.glob("output*.inprogress.h5"))
-    return RunInfo(folder, len(files), t_end * 1e3, commit, avalanche, unfinished)
+    return RunInfo(folder, len(files), t_end * 1e3, commit, avalanche, unfinished, name)
 
 
-def survey_runs(roots=None, globs=("*",)) -> list[RunInfo]:
-    """Run folders with at least one committed output, sorted by root then name.
+def survey_runs(roots=None, globs=None, exclude=()) -> list[RunInfo]:
+    """Run folders with at least one committed output, sorted by root then path.
 
-    ``roots`` defaults to the collections under the data root, see
-    :mod:`cdo.paths`. Roots that do not exist are skipped.
+    Without ``roots``, the collections under the data root with their own run
+    globs and exclusions, see :func:`cdo.paths.run_layout`. With ``roots``,
+    ``globs`` default to ``("*", "*/*")``, runs directly under a root and one
+    campaign level down. ``exclude`` takes globs relative to the root. Roots
+    that do not exist are skipped.
     """
+    if roots is None:
+        layout = paths.run_layout()
+    else:
+        layout = [(Path(r), tuple(globs or ("*", "*/*")), tuple(exclude)) for r in roots]
     infos = []
-    for root in map(Path, roots or paths.run_roots()):
+    for root, run_globs, skip in layout:
         if not root.is_dir():
             continue
-        folders = sorted({f for g in globs for f in root.glob(g) if f.is_dir()})
+        folders = sorted({f for g in run_globs for f in root.glob(g) if f.is_dir()})
         for folder in folders:
-            info = _info(folder)
+            name = folder.relative_to(root).as_posix()
+            if any(fnmatch(name, pattern) for pattern in skip):
+                continue
+            info = _info(folder, name)
             if info is not None:
                 infos.append(info)
     return infos
@@ -137,12 +151,13 @@ class RunPicker:
         import ipywidgets as w
 
         status = w.HTML()
+        shown = {info.path: info.name or info.path.name for info in self.runs}
         filt = w.Text(placeholder="filter by name, e.g. tauw or boltzmann",
                       layout=w.Layout(width="50%"))
 
         def update_status(*_):
             chosen = self.selected
-            names = ", ".join(p.name for p in chosen) or "nothing"
+            names = ", ".join(shown.get(p, p.name) for p in chosen) or "nothing"
             status.value = f"<b>Selected ({len(chosen)}):</b> {names}"
 
         if self.multiple:
@@ -202,11 +217,12 @@ class RunPicker:
         return self
 
 
-def pick_runs(roots=None, globs=("*",), *, multiple: bool = True) -> RunPicker:
+def pick_runs(roots=None, globs=None, exclude=(), *, multiple: bool = True) -> RunPicker:
     """Show the runs under ``roots`` for choosing. Read the choice from ``.selected``.
 
     ``roots`` defaults to the collections under the data root (``CDO_DATA_ROOT``,
-    see :mod:`cdo.paths`). ``multiple=False`` allows exactly one run, for the
+    see :mod:`cdo.paths`); ``globs`` and ``exclude`` are as in
+    :func:`survey_runs`. ``multiple=False`` allows exactly one run, for the
     single-run notebooks.
     """
-    return RunPicker(survey_runs(roots, globs), multiple=multiple).show()
+    return RunPicker(survey_runs(roots, globs, exclude), multiple=multiple).show()

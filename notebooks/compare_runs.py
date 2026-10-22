@@ -32,8 +32,8 @@ picker = cdo.pick_runs()
 
 # %%
 DEFAULT_RUNS = os.environ.get("CDO_RUNS", "").split(":") if os.environ.get("CDO_RUNS") else [
-    cdo.paths.run_folder("dream_runs", "iter_dthmode24_rp_boltzmann-eqterm"),
-    cdo.paths.run_folder("dream_runs", "iter_dthmode24_boltzmann_boltzmann-eqterm"),
+    cdo.paths.run_folder("dream_runs", "iter-nrt/iter_dthmode24_rp_boltzmann-eqterm"),
+    cdo.paths.run_folder("dream_runs", "iter-nrt/iter_dthmode24_boltzmann_boltzmann-eqterm"),
 ]
 RUNS = picker.selected or [Path(p) for p in DEFAULT_RUNS]
 if not picker.selected:

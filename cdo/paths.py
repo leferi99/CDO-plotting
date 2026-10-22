@@ -2,8 +2,15 @@
 
 All run folders sit under one data root with the same layout everywhere:
 
-    <root>/DREAM-runs/output/<run>/        ITER and DEMO_2026 runs
-    <root>/DEMO_data_2026/runs/<run>/      DEMO JOREK current-quench runs
+    <root>/DREAM-runs/output/<campaign>/<run>/   ITER and DEMO_2026 runs
+    <root>/DEMO_data_2026/runs/<run>/            DEMO JOREK runs, first build
+    <root>/DEMO_data_2026/runs/<campaign>/<run>/ DEMO JOREK reruns and tests
+
+In ``DREAM-runs/output`` the run folders directly under the collection are
+older copies of campaign runs, mostly hard links of the same files, and each
+``archive-<date>-<name>`` folder has an ``archive_<date>_<name>`` twin with the
+same files. :data:`RUN_GLOBS` and :data:`RUN_EXCLUDE` leave both out, so each
+run is listed once.
 
 On the cluster the root is ``/project/nr_dream002``. Elsewhere, for example on
 a laptop with a synced copy, set ``CDO_DATA_ROOT`` to the root of the copy:
@@ -39,6 +46,18 @@ COLLECTIONS = {
     "demo_jorek": Path("DEMO_data_2026/runs"),
 }
 
+#: Globs of the run folders inside each collection, relative to it.
+RUN_GLOBS = {
+    "dream_runs": ("*/*",),
+    "demo_jorek": ("*", "*/*"),
+}
+
+#: Globs of run folders to leave out, relative to the collection.
+RUN_EXCLUDE = {
+    "dream_runs": ("archive_*/*",),
+    "demo_jorek": (),
+}
+
 
 def data_root() -> Path:
     """The data root: ``CDO_DATA_ROOT`` if set, the cluster path otherwise."""
@@ -62,6 +81,12 @@ def run_roots() -> tuple[Path, ...]:
     return tuple(collection(name) for name in COLLECTIONS)
 
 
+def run_layout() -> tuple[tuple[Path, tuple, tuple], ...]:
+    """``(collection folder, run globs, exclude globs)`` for every collection."""
+    return tuple((collection(name), RUN_GLOBS[name], RUN_EXCLUDE[name])
+                 for name in COLLECTIONS)
+
+
 def run_folder(collection_name: str, run: str) -> Path:
-    """One run folder, for example ``run_folder("dream_runs", "demo2026_boltzmann")``."""
+    """One run folder, for example ``run_folder("dream_runs", "iter-nrt/iter_dthmode24_rp_commit-53d8afb")``."""
     return collection(collection_name) / run
