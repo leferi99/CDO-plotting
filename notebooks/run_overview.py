@@ -13,7 +13,7 @@
 #     name: python3
 # ---
 
-# %% [markdown]
+# %% [markdown] editable=true deletable=true slideshow={"slide_type": ""}
 # # One run: all standard figures
 #
 # Pick a run, set what to look at, then show single figures or save the whole
@@ -121,13 +121,14 @@ sel = Selection(
     kinetic=KineticSelection(
         times_ms=[0, 1, 2, 5, 10, 15, 20, 25, 30, 40, 50, "end"],
         radii=[0.0, 0.25, 0.5, 0.75, 0.9],
-        ranges=[(None, None)],  # , (None, 5)
+        ranges=[(None, None), (None, 10)],  # , (None, 5)
         range_unit="MeV",
         decades=12,
     ),
-    skip=[],
+    skip=["dndp_", "f_re_*10MeV", "f_hot_*10MeV", "spectrum*10MeV"],
     only=[],
 )
+
 print("\n".join(figures.names(run, sel)))
 
 # %% [markdown]
@@ -204,15 +205,15 @@ print("\n".join(figures.names(run, sel)))
 # `figures.make_figures(run, Selection(only=["currents", "temperature_map"]))`,
 # which shows them inline, or add `out=<folder>` to save them.
 
-# %% jupyter={"outputs_hidden": true}
+# %%
 figures.build(run, "currents", sel)
 plt.show()
 
-# %% jupyter={"outputs_hidden": true}
+# %%
 figures.build(run, "generation_rates", sel)
 plt.show()
 
-# %% jupyter={"outputs_hidden": true}
+# %%
 figures.build(run, "electric_field_average", sel)
 plt.show()
 
