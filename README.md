@@ -99,6 +99,7 @@ Saved figures go under one figure root, `CDO_FIGURE_ROOT` if set, the repository
 | `cdo.concat` | `Run`, a run concatenated across its files, read lazily by canonical name. |
 | `cdo.moments` | Currents and angle-averaged distribution moments, computed from the HDF5 file. |
 | `cdo.energy` | Energy-space transform, `dn/dp` to `dn/dE`. |
+| `cdo.avalanche` | Analytic avalanche distribution (Embréus et al. 2018, eq. 2.17) and `AvalancheParams`, for overlays. |
 | `cdo.plotting` | Low-level plot helpers, style presets, colour-map masking, time-index helpers. |
 | `cdo.labels` | Axis and quantity labels. |
 
@@ -126,6 +127,7 @@ Kinetic figures use `selection.kinetic`, one file per grid, radius and range:
 
 - `f_<grid>_<r/a>[_<range>]`: momentum-pitch maps at the chosen times, or f(p) curves on an isotropic grid.
 - `spectrum_<grid>_<r/a>[_<range>]`: density per unit kinetic energy, in m^-3 MeV^-1.
+- `pitch_<grid>_<r/a>[_<range>]`: f against momentum, one viridis line per pitch cell, one panel per time, on grids with more than one pitch cell. Made only when `kinetic.pitch_cells` is set, `"all"` or a list of cell indices (negative from the end).
 
 With both grids enabled, per radius and range:
 
@@ -133,6 +135,18 @@ With both grids enabled, per radius and range:
 - `dndp_combined_<r/a>[_<range>]`: the same for the pitch-integrated density per unit momentum, dn/dp.
 
 `cdo.plotting.angle_averaged_combined_1D` draws these directly, with times in ms, r/a and a momentum range in m_e c.
+
+### Analytic avalanche distribution
+
+`kinetic.analytic = cdo.AvalancheParams(...)` adds the analytic avalanche distribution of Embréus et al., J. Plasma Phys. 84 (2018) 905840506, eq. 2.17 (arXiv:1807.04460), dashed:
+
+- on `f_combined_` and `dndp_combined_`, over the runaway-grid momenta, in the colour of each time;
+- on `pitch_re_`, one inferno line per drawn pitch cell.
+
+The parameters are `E_over_Ec`, `Z_tot`, `lnLambda` and `c_Z` (default sqrt(5 + Z_tot)), with defaults E/E_c = 50, Z_tot = 1.4, lnΛ = 14.3.
+`n_re` defaults to the run's n_re at each time and radius.
+`direction = +1` puts the beam at ξ = +1, where DREAM has the runaways for E > 0; the paper uses ξ = -1.
+The analytic f is averaged over each pitch cell and angle-averaged through the same moment code as the data, so the curves compare cell by cell.
 
 Titles show the snapped values: r/a, r in metres, and times.
 Colour maps show missing data in white.

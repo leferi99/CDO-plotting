@@ -23,6 +23,12 @@ Kinetic figures (selection ``kinetic``), per grid, radius and range:
 - ``f_<grid>_<r/a>[_<range>]``: momentum-pitch maps at the chosen times, or
   f(p) curves on an isotropic grid.
 - ``spectrum_<grid>_<r/a>[_<range>]``: density per unit kinetic energy.
+- ``pitch_<grid>_<r/a>[_<range>]``: f against momentum, one line per pitch
+  cell, one panel per time, on grids with more than one pitch cell. Made
+  only when ``kinetic.pitch_cells`` is set, ``"all"`` or a list of cells.
+
+With ``kinetic.analytic`` set, the combined and pitch figures also show the
+analytic avalanche distribution of :mod:`cdo.avalanche`, dashed.
 
 Combined figures, when the run has both grids, per radius and range:
 
@@ -480,7 +486,23 @@ def _combined(ctx: Context, moment: str, radius: Radius, rng):
     kin = ctx.sel.kinetic
     return plotting.angle_averaged_combined_1D(
         ctx.run, moment, times_ms=kin.times_ms, r_over_a=radius.requested,
-        p_range=rng.momentum(), title=f"Hot-tail and runaway grids, {radius.label}, {rng.label}")
+        p_range=rng.momentum(), analytic=kin.analytic,
+        title=f"Hot-tail and runaway grids, {radius.label}, {rng.label}")
+
+
+def _pitch_lines(ctx: Context, grid: str, radius: Radius, rng):
+    kin = ctx.sel.kinetic
+    return plotting.pitch_resolved_1D(
+        ctx.run, grid, times_ms=kin.times_ms, r_over_a=radius.requested,
+        p_range=rng.momentum(), pitch_cells=kin.pitch_cells, analytic=kin.analytic,
+        decades=kin.decades, title=_kinetic_title(grid, radius, rng))
+
+
+def _pitch_resolved(ctx: Context, grid: str) -> bool:
+    if ctx.sel.kinetic.pitch_cells is None:
+        return False
+    xi = ctx.run.reference.read(f"{PREFIX_OF_GRID[grid]}_xi")
+    return xi is not None and len(xi) > 1
 
 
 def _isotropic_distribution(ctx, grid, radius, rng, p, frames):
@@ -567,7 +589,10 @@ def plan(run, selection: Selection | None = None) -> list[tuple[str, Callable]]:
         for rad in ctx.kinetic_radii:
             for rng in ctx.ranges:
                 suffix = f"_{rad.tag}" + (f"_{rng.tag}" if rng.tag else "")
-                for kind, builder in (("f", _distribution), ("spectrum", _spectrum)):
+                builders = [("f", _distribution), ("spectrum", _spectrum)]
+                if _pitch_resolved(ctx, grid):
+                    builders.append(("pitch", _pitch_lines))
+                for kind, builder in builders:
                     items.append((f"{kind}_{short}{suffix}",
                                   lambda b=builder, g=grid, r=rad, x=rng: b(ctx, g, r, x)))
     if ctx.grid_on("hottail") and ctx.grid_on("runaway"):

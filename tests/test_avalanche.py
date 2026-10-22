@@ -1,12 +1,23 @@
 """Analytic avalanche distribution: conventions, normalisation, overlays."""
 
-import numpy as np
-import pytest
-from scipy.integrate import quad
+import matplotlib
 
-from cdo import avalanche
-from cdo.avalanche import AvalancheParams
-from cdo.moments import MomentumMoments
+matplotlib.use("Agg")
+
+import matplotlib.pyplot as plt  # noqa: E402
+import numpy as np  # noqa: E402
+import pytest  # noqa: E402
+from scipy.integrate import quad  # noqa: E402
+
+from cdo import avalanche, plotting  # noqa: E402
+from cdo.avalanche import AvalancheParams  # noqa: E402
+from cdo.moments import MomentumMoments  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def close_figures():
+    yield
+    plt.close("all")
 
 
 def _shape(params, p, xi):
@@ -69,3 +80,101 @@ def test_momentum_integral_gives_n_re():
     n = np.sum(4 * np.pi * p**2 * f[0] * np.diff(edges))  # f[0] is the pitch mean
     # 4 pi p^2 <f> integrates to exp(-1/gamma0) ~ 0.97, since p ~ gamma only at large p.
     assert n == pytest.approx(1.0, rel=0.05)
+
+
+# --- overlays on a stub run --------------------------------------------------------
+
+
+class _StubReference:
+    def __init__(self, arrays):
+        self.arrays = arrays
+
+    def read(self, name):
+        return self.arrays.get(name)
+
+
+class _StubRun:
+    """Two times, one radius, an isotropic hot-tail grid and a 4-cell runaway grid."""
+
+    def __init__(self, n_re=(0.0, 1e16)):
+        self.timegrid_ms = np.array([0.0, 1.0])
+        self.radialgrid = np.array([0.1])
+        self.minor_radius = 0.4
+        self.derived_cache = {}
+        xi_edges = np.array([-1.0, 0.0, 0.9, 0.99, 1.0])
+        xi = 0.5 * (xi_edges[1:] + xi_edges[:-1])
+        self.p = np.array([5.0, 20.0, 60.0])
+        self.reference = _StubReference({
+            "hot_p": np.array([0.5, 1.5]), "hot_p_edges": np.array([0.0, 1.0, 2.0]),
+            "hot_xi": np.array([0.0]),
+            "re_p": self.p, "re_xi": xi, "re_xi_edges": xi_edges,
+        })
+        self._mm = MomentumMoments(
+            p=self.p, xi=xi, xi_edges=xi_edges, dxi=np.diff(xi_edges),
+            Vprime_VpVol=np.broadcast_to(2 * np.pi * self.p**2, (1, 4, 3)).copy(),
+            xi0_trapped=np.zeros(1))
+        self._fields = {
+            "n_re": np.array(n_re)[:, None],
+            "f_re": np.ones((2, 1, 4, 3)),
+        }
+
+    def field(self, name):
+        return self._fields.get(name)
+
+    def moments(self, grid):
+        return self._mm if grid == "runaway" else None
+
+    def angle_average(self, grid, moment="distribution"):
+        n = 2 if grid == "hottail" else 3
+        return np.ones((2, 1, n))
+
+
+def test_density_from_run_or_override():
+    run = _StubRun()
+    assert avalanche.density_at(run, AvalancheParams(), 1, 0) == 1e16
+    assert avalanche.density_at(run, AvalancheParams(n_re=5.0), 1, 0) == 5.0
+
+
+@pytest.mark.parametrize("moment", ["distribution", "density"])
+def test_combined_plot_adds_analytic_on_runaway_momenta(moment):
+    run = _StubRun()
+    fig = plotting.angle_averaged_combined_1D(run, moment, times_ms=[0, 1],
+                                              analytic=AvalancheParams())
+    ax = fig.axes[0]
+    dashed = [line for line in ax.lines
+              if line.get_linestyle() == "--" and len(set(line.get_xdata())) > 1]  # not the boundary
+    # n_re = 0 at t = 0, so only the second time gets an analytic curve.
+    assert len(dashed) == 1
+    np.testing.assert_array_equal(dashed[0].get_xdata(), run.p)
+    params = AvalancheParams()
+    gamma = np.sqrt(1 + run.p**2)
+    if moment == "density":
+        expected = 1e16 * np.exp(-gamma / params.gamma0) / params.gamma0
+    else:
+        expected = 1e16 * np.exp(-gamma / params.gamma0) / (4 * np.pi * params.gamma0 * run.p**2)
+    np.testing.assert_allclose(dashed[0].get_ydata(), expected, rtol=1e-10)
+    assert "E/E_c" in fig.axes[0].get_title()
+
+
+def test_pitch_lines_one_per_cell_with_dashed_analytic():
+    run = _StubRun()
+    fig = plotting.pitch_resolved_1D(run, times_ms=[0, 1], pitch_cells=[-1, -2],
+                                     analytic=AvalancheParams())
+    first, second = fig.axes[:2]
+    assert [line.get_linestyle() for line in first.lines] == ["-", "-"]
+    assert [line.get_linestyle() for line in second.lines] == ["-", "-", "--", "--"]
+    assert "0.995" in fig.legends[0].get_texts()[1].get_text()
+
+
+def test_pitch_lines_need_pitch_resolution():
+    with pytest.raises(ValueError):
+        plotting.pitch_resolved_1D(_StubRun(), "hottail")
+
+
+def test_hottail_pitch_lines_get_no_analytic_curve():
+    run = _StubRun()
+    run.reference.arrays.update({"hot_xi": np.array([-0.5, 0.5])})
+    run._fields["f_hot"] = np.ones((2, 1, 2, 2))
+    fig = plotting.pitch_resolved_1D(run, "hottail", times_ms=["end"],
+                                     analytic=AvalancheParams())
+    assert all(line.get_linestyle() == "-" for line in fig.axes[0].lines)

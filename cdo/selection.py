@@ -25,6 +25,7 @@ from typing import Sequence
 import numpy as np
 
 from . import plotting
+from .avalanche import AvalancheParams
 
 #: Electron rest energy in MeV.
 MEC2_MEV = 0.51099895
@@ -53,6 +54,12 @@ class KineticSelection:
     time. ``ranges`` is a list of ``(min, max)`` tuples in ``range_unit``,
     ``"MeV"`` (kinetic energy) or ``"mec"`` (momentum over m_e c). ``decades``
     sets the depth of the logarithmic colour scale.
+
+    ``pitch_cells`` turns on the ``pitch_<grid>_*`` line plots and picks
+    their pitch cells: ``"all"``, or indices into the xi cells (negative from
+    the end). ``None`` leaves the plots out. ``analytic``, an :class:`~cdo.avalanche.AvalancheParams`,
+    adds the analytic avalanche distribution to the combined angle averages and
+    the pitch line plots, ``None`` leaving it out.
     """
 
     times_ms: str | Sequence = "auto"
@@ -60,6 +67,8 @@ class KineticSelection:
     ranges: Sequence[tuple] = ((None, None),)
     range_unit: str = "MeV"
     decades: float = 12.0
+    pitch_cells: str | Sequence[int] | None = None
+    analytic: AvalancheParams | None = None
 
 
 @dataclass
