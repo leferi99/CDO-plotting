@@ -56,10 +56,15 @@ class KineticSelection:
     sets the depth of the logarithmic colour scale.
 
     ``pitch_cells`` turns on the ``pitch_<grid>_*`` line plots and picks
-    their pitch cells: ``"all"``, or indices into the xi cells (negative from
-    the end). ``None`` leaves the plots out. ``analytic``, an :class:`~cdo.avalanche.AvalancheParams`,
-    adds the analytic avalanche distribution to the combined angle averages and
-    the pitch line plots, ``None`` leaving it out.
+    their pitch cells: a number N for N cells spread from the beam out to
+    ``pitch_angle_max_deg``, ``"all"``, or indices into the xi cells (negative
+    from the end). ``None`` leaves the plots out.
+
+    ``analytic`` is an :class:`~cdo.avalanche.AvalancheParams`, or a list of
+    them such as ``[AvalancheParams(), AvalancheParams.from_run()]``, adding
+    the analytic avalanche distribution to the combined angle averages and the
+    pitch line plots; ``None`` leaves it out. ``combined_per_time`` splits the
+    combined figures into one per time, named ``..._t<ms>ms``.
     """
 
     times_ms: str | Sequence = "auto"
@@ -67,8 +72,10 @@ class KineticSelection:
     ranges: Sequence[tuple] = ((None, None),)
     range_unit: str = "MeV"
     decades: float = 12.0
-    pitch_cells: str | Sequence[int] | None = None
-    analytic: AvalancheParams | None = None
+    pitch_cells: int | str | Sequence[int] | None = None
+    pitch_angle_max_deg: float = 20.0
+    analytic: AvalancheParams | Sequence[AvalancheParams] | None = None
+    combined_per_time: bool = False
 
 
 @dataclass
@@ -115,6 +122,10 @@ class Time:
     @property
     def label(self) -> str:
         return f"t = {self.ms:.4g} ms"
+
+    @property
+    def tag(self) -> str:
+        return f"t{self.ms:g}ms"
 
 
 @dataclass(frozen=True)

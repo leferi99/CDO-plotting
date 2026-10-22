@@ -25,16 +25,20 @@ Kinetic figures (selection ``kinetic``), per grid, radius and range:
 - ``spectrum_<grid>_<r/a>[_<range>]``: density per unit kinetic energy.
 - ``pitch_<grid>_<r/a>[_<range>]``: f against momentum, one line per pitch
   cell, one panel per time, on grids with more than one pitch cell. Made
-  only when ``kinetic.pitch_cells`` is set, ``"all"`` or a list of cells.
+  only when ``kinetic.pitch_cells`` is set: a number of cells spread from the
+  beam, ``"all"``, or a list of cells.
 
 With ``kinetic.analytic`` set, the combined and pitch figures also show the
-analytic avalanche distribution of :mod:`cdo.avalanche`, dashed.
+analytic avalanche distribution of :mod:`cdo.avalanche`: one set of curves
+per entry, dashed, dotted, dash-dotted in list order, with the values used
+in a box or the title.
 
 Combined figures, when the run has both grids, per radius and range:
 
 - ``f_combined_<r/a>[_<range>]`` and ``dndp_combined_<r/a>[_<range>]``: the
   angle-averaged f, or dn/dp, of the hot-tail and runaway grids on one
-  momentum axis, with the hot-runaway boundary dashed in grey.
+  momentum axis, with the hot-runaway boundary dashed in grey. With
+  ``kinetic.combined_per_time`` one figure per time, ``..._t<ms>ms``.
 
 Colour maps show missing data in white, and on log scales also zero and
 negative values. Titles carry the snapped r/a, r in metres and times.
@@ -482,19 +486,23 @@ def _distribution(ctx: Context, grid: str, radius: Radius, rng):
     return fig
 
 
-def _combined(ctx: Context, moment: str, radius: Radius, rng):
+def _combined(ctx: Context, moment: str, radius: Radius, rng, time: Time | None = None):
     kin = ctx.sel.kinetic
+    title = f"Hot-tail and runaway grids, {radius.label}, {rng.label}"
+    if time is not None:
+        title += f", {time.label}"
     return plotting.angle_averaged_combined_1D(
-        ctx.run, moment, times_ms=kin.times_ms, r_over_a=radius.requested,
-        p_range=rng.momentum(), analytic=kin.analytic,
-        title=f"Hot-tail and runaway grids, {radius.label}, {rng.label}")
+        ctx.run, moment, times_ms=kin.times_ms if time is None else [time.ms],
+        r_over_a=radius.requested, p_range=rng.momentum(), analytic=kin.analytic,
+        title=title)
 
 
 def _pitch_lines(ctx: Context, grid: str, radius: Radius, rng):
     kin = ctx.sel.kinetic
     return plotting.pitch_resolved_1D(
         ctx.run, grid, times_ms=kin.times_ms, r_over_a=radius.requested,
-        p_range=rng.momentum(), pitch_cells=kin.pitch_cells, analytic=kin.analytic,
+        p_range=rng.momentum(), pitch_cells=kin.pitch_cells,
+        max_angle_deg=kin.pitch_angle_max_deg, analytic=kin.analytic,
         decades=kin.decades, title=_kinetic_title(grid, radius, rng))
 
 
@@ -600,8 +608,13 @@ def plan(run, selection: Selection | None = None) -> list[tuple[str, Callable]]:
             for rng in ctx.ranges:
                 suffix = f"_{rad.tag}" + (f"_{rng.tag}" if rng.tag else "")
                 for kind, moment in (("f", "distribution"), ("dndp", "density")):
-                    items.append((f"{kind}_combined{suffix}",
-                                  lambda m=moment, r=rad, x=rng: _combined(ctx, m, r, x)))
+                    if not ctx.sel.kinetic.combined_per_time:
+                        items.append((f"{kind}_combined{suffix}",
+                                      lambda m=moment, r=rad, x=rng: _combined(ctx, m, r, x)))
+                        continue
+                    for tm in ctx.kinetic_times:
+                        items.append((f"{kind}_combined{suffix}_{tm.tag}",
+                                      lambda m=moment, r=rad, x=rng, t=tm: _combined(ctx, m, r, x, t)))
     sel = ctx.sel
     return [(name, fn) for name, fn in items if sel.wants(name)]
 

@@ -541,6 +541,40 @@ _COMBINED_YLABELS = {
     "density": r"$dn/dp$ [m$^{-3}$ $(m_e c)^{-1}$]",
 }
 
+#: Line styles of the analytic curves, by position in the ``analytic`` list.
+ANALYTIC_STYLES = ("--", ":", "-.")
+#: Data colour of a single-time figure, from viridis.
+SINGLE_TIME_SHADE = 0.3
+#: Analytic colours of a single-time figure, from inferno, by position.
+ANALYTIC_SHADES = (0.72, 0.45, 0.2)
+#: Pitch cells drawn by default in :func:`pitch_resolved_1D`.
+DEFAULT_PITCH_CELLS = 3
+#: Largest angle from the beam, in degrees, of an automatic pitch-cell pick.
+DEFAULT_PITCH_ANGLE_MAX_DEG = 20.0
+#: Run-value lines in an annotation box before the rest is cut.
+_BOX_LINES = 8
+
+
+def _analytic_list(analytic) -> list:
+    """``None``, one :class:`~cdo.avalanche.AvalancheParams` or several, as a list."""
+    if analytic is None:
+        return []
+    if isinstance(analytic, (list, tuple)):
+        return list(analytic)
+    return [analytic]
+
+
+def _annotate(axes, lines, loc="lower left"):
+    """A small text box inside the axes, empty for decreasing f(p) at lower left."""
+    if not lines:
+        return
+    from matplotlib.offsetbox import AnchoredText
+
+    box = AnchoredText("\n".join(lines), loc=loc, prop=dict(fontsize="x-small"),
+                       frameon=True, borderpad=0.4)
+    box.patch.set(facecolor="white", alpha=0.85, edgecolor="0.6")
+    axes.add_artist(box)
+
 
 def _cached_angle_average(run, grid, moment):
     """``run.angle_average`` kept in the run's derived cache, shared with cdo.figures."""
@@ -583,15 +617,19 @@ def angle_averaged_combined_1D(
     inside ``(min, max)`` in m_e c, ``None`` meaning the grid edge.
 
     Each time gives one curve, the hot-tail grid followed by the runaway grid
-    in the same colour, early times light and late times dark. A grey dashed
-    vertical line marks the hot-runaway boundary, the upper momentum edge of
-    the hot-tail grid, when it lies inside ``p_range``. Non-positive values are
-    left out of the log y-axis.
+    in the same colour, early times light and late times dark. A single time
+    is drawn in a darker blue. A grey dashed vertical line marks the
+    hot-runaway boundary, the upper momentum edge of the hot-tail grid, when it
+    lies inside ``p_range``. Non-positive values are left out of the log
+    y-axis.
 
-    ``analytic``, an :class:`~cdo.avalanche.AvalancheParams`, adds the
-    analytic avalanche distribution over the runaway-grid momenta, dashed in
-    the colour of each time, averaged the same way as the data. Times with no
-    runaways get no analytic curve.
+    ``analytic`` is one :class:`~cdo.avalanche.AvalancheParams` or a list of
+    them, for example ``[AvalancheParams(), AvalancheParams.from_run()]``. Each
+    adds the analytic avalanche distribution over the runaway-grid momenta,
+    averaged the same way as the data, with the line style of its position in
+    the list (``ANALYTIC_STYLES``): in the colour of each time, or from
+    inferno for a single time. A box at lower left lists the values used, per
+    time for values taken from the run. Times with no runaways get no curve.
     """
     from .selection import snap_radii, snap_times  # selection imports this module
 
@@ -609,23 +647,38 @@ def angle_averaged_combined_1D(
         keep &= p >= lo
     if hi is not None:
         keep &= p <= hi
+    keep_re = keep[-re.shape[-1]:]
     times = snap_times(run.timegrid_ms, times_ms, lines=False)
     radius = snap_radii(run.radialgrid, run.minor_radius, [r_over_a])[0]
+    models = _analytic_list(analytic)
+    single = len(times) == 1
 
+    box = []
     with plt.rc_context(LINE_RC):
         fig, axes = plt.subplots(figsize=figsize)
-        palette = plt.cm.viridis(np.linspace(0.9, 0.0, max(len(times), 1)))
+        if single:
+            palette = [plt.cm.viridis(SINGLE_TIME_SHADE)]
+        else:
+            palette = plt.cm.viridis(np.linspace(0.9, 0.0, max(len(times), 1)))
         for c, tm in zip(palette, times):
             values = np.concatenate([hot[tm.index, radius.cell], re[tm.index, radius.cell]])
             values = np.where(values > 0, values, np.nan)
             axes.plot(p[keep], values[keep], color=c, label=tm.label)
-            if analytic is not None:
-                _plot_analytic_average(axes, run, analytic, moment, tm.index, radius.cell,
-                                       keep[-re.shape[-1]:], color=c)
-        if analytic is not None:
-            axes.plot([], [], color="grey", linestyle="--", label="analytic")
-            title = title or radius.label
-            title = f"{title}\n{analytic.label}"
+            for k, params in enumerate(models):
+                colour = plt.cm.inferno(ANALYTIC_SHADES[k % len(ANALYTIC_SHADES)]) if single else c
+                resolved = params.resolve(run, tm.index, radius.cell)
+                if params.run_parameters:
+                    box.append(f"{params.kind}, {tm.label}: {resolved.text}")
+                if resolved.drawable:
+                    _plot_analytic_average(axes, run, resolved, moment, radius.cell, keep_re,
+                                           color=colour,
+                                           linestyle=ANALYTIC_STYLES[k % len(ANALYTIC_STYLES)])
+        for k, params in enumerate(models):
+            colour = plt.cm.inferno(ANALYTIC_SHADES[k % len(ANALYTIC_SHADES)]) if single else "grey"
+            axes.plot([], [], color=colour, linestyle=ANALYTIC_STYLES[k % len(ANALYTIC_STYLES)],
+                      label=f"analytic, {params.kind}")
+            if not params.run_parameters:
+                box.insert(0, f"set values: {params.values_text}")
         if (lo is None or p_boundary >= lo) and (hi is None or p_boundary <= hi):
             axes.axvline(p_boundary, color="grey", linestyle="--", linewidth=1.0)
         axes.set_yscale("log")
@@ -634,20 +687,51 @@ def angle_averaged_combined_1D(
         axes.set_ylabel(ylabel or _COMBINED_YLABELS[moment])
         axes.set_title(title or radius.label, fontsize="medium")
         axes.legend(fontsize="small", loc="upper left", bbox_to_anchor=(1.01, 1.0))
+        _annotate(axes, _cap(box))
 
     return _finish(fig, folder, savename, dpi)
 
 
-def _plot_analytic_average(axes, run, params, moment, time_index, radial_cell, keep, **style):
-    """Dashed analytic angle average on the runaway-grid momenta inside ``keep``."""
+def _cap(lines, limit=_BOX_LINES):
+    """At most ``limit`` lines, the rest replaced by a count."""
+    if len(lines) <= limit:
+        return lines
+    return lines[:limit] + [f"... {len(lines) - limit} more"]
+
+
+def _plot_analytic_average(axes, run, resolved, moment, radial_cell, keep, **style):
+    """Analytic angle average on the runaway-grid momenta inside ``keep``."""
     from . import avalanche
 
-    n_re = avalanche.density_at(run, params, time_index, radial_cell)
-    if not n_re > 0:
-        return
-    values = avalanche.angle_average(run, "runaway", radial_cell, params, n_re, moment)
+    values = avalanche.angle_average(run, "runaway", radial_cell, resolved.params,
+                                     resolved.n_re, moment)
     values = np.where(values > 0, values, np.nan)
-    axes.plot(run.reference.read("re_p")[keep], values[keep], linestyle="--", **style)
+    axes.plot(run.reference.read("re_p")[keep], values[keep], **style)
+
+
+def pick_pitch_cells(xi, cells=DEFAULT_PITCH_CELLS, *, direction=1,
+                     max_angle_deg=DEFAULT_PITCH_ANGLE_MAX_DEG) -> np.ndarray:
+    """Indices of the pitch cells to draw, sorted.
+
+    ``cells`` is ``"all"``, a list of indices into ``xi`` (negative from the
+    end), or a number N: N cells spread evenly in angle from the cell nearest
+    the beam (xi = ``direction``) out to ``max_angle_deg`` from it, each
+    target snapped to the nearest cell. Targets landing on one cell give one.
+    """
+    xi = np.asarray(xi, dtype=float)
+    if cells is None or (isinstance(cells, str) and cells == "all"):
+        return np.arange(len(xi))
+    if isinstance(cells, str):
+        raise ValueError(f"pitch cells must be 'all', a number or a list, got {cells!r}")
+    if np.ndim(cells) == 0:
+        n = int(cells)
+        if n < 1:
+            raise ValueError(f"need at least one pitch cell, got {cells!r}")
+        angle = np.degrees(np.arccos(np.clip(direction * xi, -1, 1)))
+        start = float(angle.min())
+        targets = np.linspace(start, max(max_angle_deg, start), n) if n > 1 else [start]
+        return np.unique([int(np.argmin(np.abs(angle - t))) for t in targets])
+    return np.unique(np.arange(len(xi))[list(cells)])
 
 
 def pitch_resolved_1D(
@@ -657,7 +741,8 @@ def pitch_resolved_1D(
     times_ms="auto",
     r_over_a=0.0,
     p_range=(None, None),
-    pitch_cells=None,
+    pitch_cells=DEFAULT_PITCH_CELLS,
+    max_angle_deg=DEFAULT_PITCH_ANGLE_MAX_DEG,
     analytic=None,
     decades=12,
     cmap="viridis",
@@ -671,34 +756,37 @@ def pitch_resolved_1D(
 ):
     """f against momentum, one line per pitch cell, at one radius and several times.
 
-    One panel per time. ``pitch_cells`` lists the pitch cells to draw, by
-    index into the grid's xi cells (negative indices count from the end, so
-    ``[-1, -2, -3]`` are the three cells nearest xi = +1), ``None`` or
-    ``"all"`` meaning all.
-    ``run.reference.read("re_xi")`` lists the cell centres. Lines are coloured
-    by cell from ``cmap``.
+    One panel per time. ``pitch_cells`` picks the cells, see
+    :func:`pick_pitch_cells`: by default 3 spread from the beam out to
+    ``max_angle_deg``, or ``"all"``, or a list of indices (negative from the
+    end, so ``[-1, -2, -3]`` are the three cells nearest xi = +1).
+    ``run.reference.read("re_xi")`` lists the cell centres. Data lines are
+    coloured by cell from ``cmap``.
 
-    ``analytic``, an :class:`~cdo.avalanche.AvalancheParams`, adds the
-    analytic avalanche f of each drawn cell, averaged over the cell, dashed and
-    coloured from ``analytic_cmap``, on the runaway grid only. The y-axis spans ``decades`` below the
-    largest drawn data value. ``times_ms``, ``r_over_a`` and ``p_range`` (m_e c)
-    are as in :func:`angle_averaged_combined_1D`.
+    ``analytic`` is one :class:`~cdo.avalanche.AvalancheParams` or a list.
+    Each adds the analytic f of every drawn cell, averaged over the cell, in
+    the ``analytic_cmap`` colour of that cell and the line style of its
+    position in the list (``ANALYTIC_STYLES``), on the runaway grid only. Set
+    values go in the title, run values in a box in each panel. The y-axis
+    spans ``decades`` below the largest drawn data value. ``times_ms``,
+    ``r_over_a`` and ``p_range`` (m_e c) are as in
+    :func:`angle_averaged_combined_1D`.
     """
     from . import avalanche
     from .selection import snap_radii, snap_times  # selection imports this module
 
     prefix = "hot" if grid == "hottail" else "re"
+    models = _analytic_list(analytic)
     if grid == "hottail":
-        analytic = None  # the avalanche formula describes the runaways only
+        models = []  # the avalanche formula describes the runaways only
     read = run.reference.read
     xi = read(f"{prefix}_xi")
     if xi is None or len(xi) < 2:
         raise ValueError(f"the {grid} grid has no pitch resolution")
     f = run.field(f"f_{prefix}")
     p = read(f"{prefix}_p")
-    cells = np.arange(len(xi))
-    if pitch_cells is not None and not isinstance(pitch_cells, str):
-        cells = np.unique(cells[list(pitch_cells)])
+    direction = models[0].direction if models else 1
+    cells = pick_pitch_cells(xi, pitch_cells, direction=direction, max_angle_deg=max_angle_deg)
     lo, hi = p_range
     keep = np.ones(p.shape, dtype=bool)
     if lo is not None:
@@ -708,9 +796,10 @@ def pitch_resolved_1D(
     times = snap_times(run.timegrid_ms, times_ms, lines=False)
     radius = snap_radii(run.radialgrid, run.minor_radius, [r_over_a])[0]
 
-    shades = np.linspace(0.0, 0.9, len(cells)) if len(cells) > 1 else np.array([0.5])
+    shades = np.linspace(0.0, 0.9, len(cells)) if len(cells) > 1 else np.array([0.3])
     data_colours = plt.get_cmap(cmap)(shades)
-    model_colours = plt.get_cmap(analytic_cmap)(np.linspace(0.0, 0.8, len(shades)))
+    model_colours = plt.get_cmap(analytic_cmap)(np.linspace(0.0, 0.8, len(cells))
+                                                if len(cells) > 1 else np.array([0.55]))
 
     n = len(times)
     ncols = ncols or min(n, 3)
@@ -728,13 +817,18 @@ def pitch_resolved_1D(
                     vmax = max(vmax, float(np.nanmax(values)))
                 ax.plot(p[keep], values, color=c,
                         label=f"$\\xi$ = {xi[j]:.4g} ({np.degrees(np.arccos(np.clip(xi[j], -1, 1))):.3g}°)")
-            if analytic is not None:
-                n_re = avalanche.density_at(run, analytic, tm.index, radius.cell)
-                if n_re > 0:
-                    model = avalanche.on_grid(run, grid, analytic, n_re)[:, keep]
-                    for c, j in zip(model_colours, cells):
-                        ax.plot(p[keep], np.where(model[j] > 0, model[j], np.nan),
-                                color=c, linestyle="--")
+            box = []
+            for k, params in enumerate(models):
+                resolved = params.resolve(run, tm.index, radius.cell)
+                if params.run_parameters:
+                    box.append(f"{params.kind}: {resolved.text}")
+                if not resolved.drawable:
+                    continue
+                model = avalanche.on_grid(run, grid, resolved.params, resolved.n_re)[:, keep]
+                for c, j in zip(model_colours, cells):
+                    ax.plot(p[keep], np.where(model[j] > 0, model[j], np.nan), color=c,
+                            linestyle=ANALYTIC_STYLES[k % len(ANALYTIC_STYLES)])
+            _annotate(ax, box)
             ax.set_yscale("log")
             ax.set_title(tm.label, fontsize="small")
         for ax in axes.flat[n:]:
@@ -746,13 +840,15 @@ def pitch_resolved_1D(
         for ax in axes[:, 0]:
             ax.set_ylabel(r"$f$ [m$^{-3}$ $(m_e c)^{-3}$]", fontsize="small")
         handles, labels = axes.flat[0].get_legend_handles_labels()
-        if analytic is not None:
-            handles.append(matplotlib.lines.Line2D([], [], color=model_colours[-1], linestyle="--"))
-            labels.append("analytic, per cell")
+        for k, params in enumerate(models):
+            handles.append(matplotlib.lines.Line2D(
+                [], [], color="grey", linestyle=ANALYTIC_STYLES[k % len(ANALYTIC_STYLES)]))
+            labels.append(f"analytic, {params.kind}")
         fig.legend(handles, labels, fontsize="x-small", loc="outside right upper")
         heading = title or f"{'hot-tail' if grid == 'hottail' else 'runaway'} grid, {radius.label}"
-        if analytic is not None:
-            heading += f"\n{analytic.label}"
+        for params in models:
+            if not params.run_parameters:
+                heading += f"\nset values: {params.values_text}"
         fig.suptitle(heading, fontsize="medium")
 
     return _finish(fig, folder, savename, dpi)

@@ -116,6 +116,10 @@ class _StubRun:
         self._fields = {
             "n_re": np.array(n_re)[:, None],
             "f_re": np.ones((2, 1, 4, 3)),
+            "E_field": np.array([[0.5], [-3.0]]),
+            "Ectot": np.array([[0.25], [0.25]]),
+            "Zeff": np.array([[2.0], [3.0]]),
+            "lnLambdaC": np.array([[15.0], [16.0]]),
         }
 
     def field(self, name):
@@ -153,7 +157,7 @@ def test_combined_plot_adds_analytic_on_runaway_momenta(moment):
     else:
         expected = 1e16 * np.exp(-gamma / params.gamma0) / (4 * np.pi * params.gamma0 * run.p**2)
     np.testing.assert_allclose(dashed[0].get_ydata(), expected, rtol=1e-10)
-    assert "E/E_c" in fig.axes[0].get_title()
+    assert "set values: $E/E_c$ = 50" in _box_text(ax)
 
 
 def test_pitch_lines_one_per_cell_with_dashed_analytic():
@@ -178,3 +182,68 @@ def test_hottail_pitch_lines_get_no_analytic_curve():
     fig = plotting.pitch_resolved_1D(run, "hottail", times_ms=["end"],
                                      analytic=AvalancheParams())
     assert all(line.get_linestyle() == "-" for line in fig.axes[0].lines)
+
+
+def _box_text(ax):
+    from matplotlib.offsetbox import AnchoredText
+    return "\n".join(a.txt._text.get_text() for a in ax.artists if isinstance(a, AnchoredText))
+
+
+def test_resolve_takes_run_values_with_the_field_magnitude():
+    run = _StubRun()
+    resolved = AvalancheParams.from_run().resolve(run, 1, 0)
+    assert resolved.from_run == {"E_over_Ec": 12.0, "Z_tot": 3.0, "lnLambda": 16.0}
+    assert resolved.params.gamma0 == pytest.approx(np.sqrt(8.0) * 16.0)
+    assert resolved.n_re == 1e16 and resolved.drawable
+    assert "12" in resolved.text and "1e+16" in resolved.text
+    mixed = AvalancheParams(Z_tot=None).resolve(run, 0, 0)
+    assert mixed.from_run == {"Z_tot": 2.0} and mixed.params.E_over_Ec == 50.0
+    assert AvalancheParams(Z_tot=None).kind == "run and set values"
+    with pytest.raises(ValueError):
+        AvalancheParams.from_run().gamma0
+
+
+def test_missing_run_field_gives_no_curve_and_says_so():
+    run = _StubRun()
+    del run._fields["Zeff"]
+    resolved = AvalancheParams.from_run().resolve(run, 1, 0)
+    assert not resolved.drawable and "Zeff" in resolved.text
+    fig = plotting.angle_averaged_combined_1D(
+        run, times_ms=["end"], analytic=[AvalancheParams(), AvalancheParams.from_run()])
+    ax = fig.axes[0]
+    styles = [line.get_linestyle() for line in ax.lines if len(set(line.get_xdata())) > 1]
+    assert styles == ["-", "--"]
+    assert "run has no Zeff" in _box_text(ax)
+
+
+def test_single_time_combined_plot_uses_dark_data_and_two_analytic_styles():
+    run = _StubRun()
+    fig = plotting.angle_averaged_combined_1D(
+        run, times_ms=["end"], analytic=[AvalancheParams(), AvalancheParams.from_run()])
+    ax = fig.axes[0]
+    curves = [line for line in ax.lines if len(set(line.get_xdata())) > 1]
+    assert [line.get_linestyle() for line in curves] == ["-", "--", ":"]
+    data_colour = matplotlib.colors.to_rgba(curves[0].get_color())
+    assert data_colour == plt.cm.viridis(plotting.SINGLE_TIME_SHADE)
+    text = _box_text(ax)
+    assert "set values" in text and "run values, t = 1 ms" in text and "12" in text
+
+
+def test_pick_pitch_cells_spreads_from_the_beam():
+    xi = np.cos(np.radians([60, 40, 21.5, 15.8, 10.1, 7.3, 4.5, 2.0]))
+    assert list(plotting.pick_pitch_cells(xi, 3)) == [2, 4, 7]
+    assert list(plotting.pick_pitch_cells(-xi, 3, direction=-1)) == [2, 4, 7]
+    assert list(plotting.pick_pitch_cells(xi, 1)) == [7]
+    assert list(plotting.pick_pitch_cells(xi, [-1, 0])) == [0, 7]
+    assert len(plotting.pick_pitch_cells(xi, "all")) == 8
+    assert list(plotting.pick_pitch_cells(xi, 30, max_angle_deg=3)) == [7]  # deduplicated
+
+
+def test_pitch_panels_get_run_values_and_one_style_per_analytic_entry():
+    run = _StubRun()
+    fig = plotting.pitch_resolved_1D(run, times_ms=["end"], pitch_cells=2,
+                                     analytic=[AvalancheParams(), AvalancheParams.from_run()])
+    ax = fig.axes[0]
+    assert [line.get_linestyle() for line in ax.lines] == ["-", "-", "--", "--", ":", ":"]
+    assert "run values" in _box_text(ax)
+    assert "set values" in fig._suptitle.get_text()
