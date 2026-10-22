@@ -11,10 +11,10 @@ The notebooks also use `jupyterlab`, `jupytext` and `ipywidgets`.
 A DREAM install is not needed for reading, moments, or plotting.
 It is used only by the optional cross-check tests.
 
-The project venv is `.venv` in this folder, separate from the `DREAM-runs` venv the simulations use:
+The project venv is `.venv` in this folder:
 
 ```bash
-/opt/cray/pe/python/3.11.7/bin/python -m venv .venv
+python -m venv .venv
 .venv/bin/python -m pip install numpy scipy h5py matplotlib pytest jupyterlab jupytext ipywidgets
 ```
 
@@ -35,27 +35,43 @@ All run folders sit under one data root, with the same layout on every machine:
 
 | Folder under the root | Runs |
 |---|---|
-| `DREAM-runs/output/` | ITER DThmode24 and DEMO_2026 runs |
-| `DEMO_data_2026/runs/` | DEMO JOREK current-quench runs |
+| `DREAM-runs/output/<campaign>/<run>/` | ITER DThmode24 and DEMO_2026 runs |
+| `DEMO_data_2026/runs/<run>/` | DEMO JOREK current-quench runs, first build |
+| `DEMO_data_2026/runs/<campaign>/<run>/` | DEMO JOREK reruns and tests |
 
-On the cluster the root is `/project/nr_dream002`, used when nothing is set.
-Elsewhere, set `CDO_DATA_ROOT` to the root of a synced copy, for example in fish:
+`DREAM-runs/output/` also holds run folders directly under it, older copies of campaign runs that mostly share the same files through hard links, and an `archive_<date>_<name>` twin of each `archive-<date>-<name>` campaign with the same files.
+The run picker leaves both out, so each run is listed once, see `RUN_GLOBS` and `RUN_EXCLUDE` in `cdo/paths.py`.
+A run folder is any folder with at least one committed leg, `output_NNNN.h5`; `init/`, `seed/` and `logs/` folders have none and never show up.
+
+The data root is `CDO_DATA_ROOT` if set, the repository's `data/` otherwise.
+`data/` is not tracked and can be a symlink to the data:
+
+```bash
+ln -s /path/to/data/root data
+```
+
+or, in fish:
 
 ```fish
 set -Ux CDO_DATA_ROOT ~/Data/DREAM
 ```
 
-The plotting reads only the committed legs, `output_NNNN.h5`, and each run's `manifest.json`.
-These rsync commands copy just those, about 6 GB, and on later runs only new legs:
+To sync a copy from a remote machine, and on later runs only what changed:
 
 ```bash
-rsync -avH --prune-empty-dirs --exclude='archive_*/' --exclude='*.inprogress.h5' \
-    --include='*/' --include='output_[0-9]*.h5' --include='manifest.json' --exclude='*' \
-    komondor-2026:/project/nr_dream002/DREAM-runs/output/ ~/Data/DREAM/DREAM-runs/output/
-rsync -avH --prune-empty-dirs --exclude='*.inprogress.h5' \
-    --include='*/' --include='output_[0-9]*.h5' --include='manifest.json' --exclude='*' \
-    komondor-2026:/project/nr_dream002/DEMO_data_2026/runs/ ~/Data/DREAM/DEMO_data_2026/runs/
+rsync -avhH --partial --info=progress2 \
+      --exclude='*.inprogress.h5' --exclude='.lock' \
+      <host>:<data root>/DREAM-runs/output/ ~/Data/DREAM/DREAM-runs/output/
 ```
+
+and the same for `DEMO_data_2026/runs/`.
+
+- `-H` keeps hard links. The old top-level folders and the campaign folders share files, and so do runs that share their opening legs, so without it each shared file is stored two or more times.
+- `--exclude='*.inprogress.h5'` skips legs still being computed, which arrive as `output_NNNN.h5` once committed. `--exclude='.lock'` skips the run locks.
+- There is no `--delete`, so nothing on the local copy is removed.
+- `--partial` lets an interrupted transfer resume.
+
+Site-specific notes, such as the cluster paths and host names, go in `docs/local-setup.md`, which is not tracked.
 
 `cdo.paths` resolves the root and the collection folders.
 The run picker, the notebook defaults and the batch script all go through it.
@@ -141,23 +157,22 @@ The notebooks are `# %%` scripts.
 JupyterLab opens them as notebooks through Jupytext, and saves edits back to the `.py` file.
 Outputs are not stored, so git sees only code changes.
 
-On the cluster, inside `tmux`:
+On a remote machine, inside `tmux`:
 
 ```bash
-cd /project/nr_dream002/CDO-plotting
+cd /path/to/CDO-plotting
 OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4 .venv/bin/jupyter lab --no-browser --port 8890
 ```
 
-The thread caps matter on the login nodes.
-They limit each user to 500 processes and threads together, and an uncapped kernel holds about 70 threads for BLAS and OpenMP.
-A few open notebooks then exhaust the limit, and processes fail with "can't start new thread" or get killed.
+The thread caps matter on shared login nodes with a per-user limit on processes and threads.
+An uncapped kernel can hold dozens of threads for BLAS and OpenMP, and a few open notebooks then exhaust the limit, so processes fail with "can't start new thread" or get killed.
 Kernels inherit the caps from the server.
 Shut down kernels of notebooks you no longer use (Kernel > Shut Down Kernel).
 
 On the laptop:
 
 ```bash
-ssh -N -L 8890:localhost:8890 <cluster-login-host>
+ssh -N -L 8890:localhost:8890 <login-host>
 ```
 
 Then open the `http://localhost:8890/?token=...` link that JupyterLab prints, and open a notebook with "Open With > Jupytext Notebook".
