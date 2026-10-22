@@ -39,11 +39,14 @@ class FluidSelection:
     ``"end"`` for the last step, or ``"auto"`` for the standard ladder chosen
     by run length. ``radii`` (r/a) picks the time traces. ``time_range_ms``
     crops the time axis of every fluid figure, ``None`` meaning the run edge.
+    ``critical_field_profiles`` adds E_c,eff, dashed, to the electric-field
+    profiles.
     """
 
     times_ms: str | Sequence = "auto"
     radii: Sequence[float] = (0.0, 0.5, 0.9)
     time_range_ms: tuple = (None, None)
+    critical_field_profiles: bool = False
 
 
 @dataclass
@@ -78,11 +81,28 @@ class KineticSelection:
     combined_per_time: bool = False
 
 
+#: Figures a :class:`Selection` leaves out unless ``skip`` is given: Z_eff and
+#: n_cold only as radial profiles, current densities as profiles and maps, and
+#: the electric field only as radial profiles, with the E/E_c,eff map. ``skip=[]`` makes every figure;
+#: ``skip=[*DEFAULT_SKIP, ...]`` adds to the list.
+DEFAULT_SKIP = (
+    "effective_charge_traces",
+    "effective_charge_map",
+    "electron_density_traces",
+    "electron_density_map",
+    "*_current_density_traces",
+    "electric_field_ra*",
+    "electric_field_average",
+    "electric_field_map",
+)
+
+
 @dataclass
 class Selection:
     """What the figures show.
 
-    ``skip`` lists figures to leave out. ``only``, when not empty, keeps just
+    ``skip`` lists figures to leave out, :data:`DEFAULT_SKIP` unless given.
+    ``only``, when not empty, keeps just
     the figures that match one of its entries. A plain entry matches every name
     starting with it, so ``"rate_map"`` covers ``rate_map_net`` and the rest.
     An entry with ``*``, ``?`` or ``[...]`` is a wildcard pattern matched
@@ -92,7 +112,7 @@ class Selection:
 
     fluid: FluidSelection = field(default_factory=FluidSelection)
     kinetic: KineticSelection = field(default_factory=KineticSelection)
-    skip: Sequence[str] = ()
+    skip: Sequence[str] = DEFAULT_SKIP
     only: Sequence[str] = ()
 
     def wants(self, name: str) -> bool:

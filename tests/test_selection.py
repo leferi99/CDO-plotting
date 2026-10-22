@@ -92,3 +92,23 @@ def test_selection_wildcards_match_the_whole_name():
     assert not s.wants("f_re_ra0.05") and not s.wants("spectrum_re_ra0.50")
     assert not sel.Selection(skip=["*_map"]).wants("temperature_map")
     assert sel.Selection(skip=["*_map"]).wants("temperature_map_extra")
+
+
+def test_default_skip_keeps_profiles_maps_and_drops_field_traces():
+    s = sel.Selection()
+    for name in ("effective_charge_profiles", "electron_density_profiles",
+                 "ohmic_current_density_profiles", "runaway_current_density_map",
+                 "electric_field_profiles", "critical_field_ratio_map",
+                 "temperature_traces"):
+        assert s.wants(name), name
+    for name in ("effective_charge_traces", "effective_charge_map", "electron_density_map",
+                 "electron_density_traces", "total_current_density_traces",
+                 "hot_current_density_traces", "electric_field_ra0.05",
+                 "electric_field_average", "electric_field_map"):
+        assert not s.wants(name), name
+    assert sel.Selection(skip=[]).wants("electric_field_average")
+    assert not sel.Selection(skip=[*sel.DEFAULT_SKIP, "currents"]).wants("currents")
+
+
+def test_field_profiles_leave_out_the_critical_field_by_default():
+    assert sel.FluidSelection().critical_field_profiles is False

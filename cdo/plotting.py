@@ -382,6 +382,81 @@ def critical_field_ratio_2D(
     return _finish(fig, folder, savename, dpi)
 
 
+#: Band edges of :func:`critical_field_ratio_bands_2D`, linear values of E/E_c.
+RATIO_BANDS = (0.0, 0.25, 0.5, 0.75, 0.9, 1.0, 1.1, 1.5, 2.0, 3.0, 5.0, 10.0, 20.0, 50.0, 100.0)
+
+
+def _ratio_band_colours(levels, cmap):
+    """One colour per band: blues from the bottom up to 1, reds above, from ``cmap``."""
+    n_below = sum(1 for lo in levels[:-1] if lo < 1.0)
+    n_above = len(levels) - 1 - n_below
+    below = cmap(np.linspace(0.05, 0.42, n_below)) if n_below else np.empty((0, 4))
+    above = cmap(np.linspace(0.58, 0.95, n_above)) if n_above else np.empty((0, 4))
+    return np.vstack([below, above])
+
+
+def critical_field_ratio_bands_2D(
+    E,
+    Ec,
+    xgrid,
+    ygrid,
+    *,
+    levels=RATIO_BANDS,
+    figsize=FS_2D_MESH,
+    cmap="RdBu_r",
+    xlabel=None,
+    ylabel=None,
+    title=None,
+    cbarlabel=r"$|E_\parallel| / E_{\rm c,eff}$",
+    contour_label=r"$|E_\parallel| = E_{\rm c,eff}$",
+    ylim=(None, None),
+    folder=None,
+    savename=None,
+    dpi=150,
+):
+    """``|E| / Ec`` over time and radius in discrete colour bands, for reading by eye.
+
+    Each cell is drawn (pcolormesh, nearest shading) in the colour of the band
+    its value falls in. ``levels`` are the band edges in linear values, finer
+    near 1 and coarser above; bands below 1 are blue, above 1 red, and values
+    past the last edge take the darkest red, marked by the arrow on the colour
+    bar. The bar gives every band the same height and labels the edges. The
+    ``|E| = Ec`` contour is drawn in black, labelled ``contour_label`` in a
+    legend above the axes. Missing cells are white. ``E`` and
+    ``Ec`` are ``(time, radius)``.
+    """
+    E = np.asarray(E, dtype=float)
+    Ec = np.asarray(Ec, dtype=float)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        ratio = np.abs(E) / Ec
+    ratio = np.ma.masked_invalid(ratio)
+    levels = list(levels)
+    base = plt.colormaps[cmap] if isinstance(cmap, str) else cmap
+    band_colours = _ratio_band_colours(levels, base)
+    listed = colors.ListedColormap(band_colours).with_extremes(
+        over=base(1.0), under=base(0.0), bad="white")
+    norm = colors.BoundaryNorm(levels, ncolors=listed.N, clip=False)
+
+    fig = plt.figure(figsize=figsize)
+    axes = plt.subplot(1, 1, 1)
+    mesh = axes.pcolormesh(xgrid, ygrid, ratio, cmap=listed, norm=norm, shading="nearest")
+    if np.nanmin(ratio.filled(np.nan)) < 1.0 < np.nanmax(ratio.filled(np.nan)):
+        axes.contour(xgrid, ygrid, ratio.filled(np.nan), levels=[1.0], colors="k",
+                     linewidths=1.5)
+        axes.legend([matplotlib.lines.Line2D([], [], color="k", linewidth=1.5)],
+                    [contour_label], fontsize="small", loc="lower right",
+                    bbox_to_anchor=(1.0, 1.0), borderaxespad=0.2)
+    cbar = fig.colorbar(mesh, ax=axes, ticks=levels, spacing="uniform", extend="max")
+    cbar.ax.set_yticklabels([f"{v:g}" for v in levels])
+    cbar.set_label(cbarlabel)
+    axes.set_ylim(ylim)
+    axes.set_xlabel(xlabel)
+    axes.set_ylabel(ylabel)
+    axes.set_title(title)
+
+    return _finish(fig, folder, savename, dpi)
+
+
 # --- distribution plots, carried over from CDO.py ------------------------
 
 

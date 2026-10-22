@@ -240,3 +240,22 @@ def test_angle_averaged_combined_1D_snaps_radius_and_trims_momentum():
 def test_angle_averaged_combined_1D_rejects_unknown_moment():
     with pytest.raises(ValueError):
         plotting.angle_averaged_combined_1D(_StubRun(), "current")
+
+
+def test_critical_field_ratio_bands_colour_by_band_and_mark_one():
+    r = np.linspace(0.05, 0.95, 5)
+    t = np.linspace(0.0, 10.0, 4)
+    E = np.outer(np.array([0.2, 1.05, 3.0, 400.0]), np.ones(5))
+    E[0, 0] = np.nan
+    fig = plotting.critical_field_ratio_bands_2D(E, np.ones_like(E), r, t)
+    ax = fig.axes[0]
+    mesh = ax.collections[0]
+    norm, cmap = mesh.norm, mesh.cmap
+    band = lambda v: int(norm(np.array([v]))[0])
+    assert band(0.2) == 0 and band(1.05) == 5 and band(3.0) == 9
+    np.testing.assert_allclose(cmap(norm(np.array([400.0])))[0], plt.colormaps["RdBu_r"](1.0))  # over
+    assert np.ma.is_masked(mesh.get_array()[0])  # missing cell left white
+    assert len(ax.collections) >= 2  # the ratio-one contour
+    assert ax.get_legend().get_texts()[0].get_text() == r"$|E_\parallel| = E_{\rm c,eff}$"
+    labels = [tick.get_text() for tick in fig.axes[1].get_yticklabels()]
+    assert labels[:3] == ["0", "0.25", "0.5"] and labels[-1] == "100"

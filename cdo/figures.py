@@ -14,7 +14,13 @@ Fluid figures (selection ``fluid``):
 - ``<quantity>_map``: the quantity over time and radius.
 - ``electric_field_<r/a>`` and ``electric_field_average``: E, the effective
   and Connor-Hastie critical fields, and E/Eceff on the right axis.
-- ``electric_field_profiles`` and ``critical_field_ratio_map``.
+- ``electric_field_profiles`` (|E|, with E_c,eff dashed when
+  ``fluid.critical_field_profiles`` is set), ``electric_field_map`` (signed E, symlog) and
+  ``critical_field_ratio_map`` (|E|/E_c,eff in discrete bands, readable by
+  eye, with the ratio-one contour in black).
+
+:data:`cdo.selection.DEFAULT_SKIP` leaves some of these out unless a
+selection's ``skip`` is set.
 - ``generation_rates`` and ``rate_map_<channel>``: the channels found by
   :func:`cdo.derived.rate_channels`, labelled as equation terms or estimates.
 
@@ -311,17 +317,20 @@ def _electric_field(ctx: Context, radius: Radius | None):
 
 def _electric_field_profiles(ctx: Context):
     E = ctx.field("E_field")
-    eceff = ctx.field("Eceff")
+    critical = ctx.sel.fluid.critical_field_profiles
+    eceff = ctx.field("Eceff") if critical else None
     with plt.rc_context(plotting.LINE_RC):
         fig, ax = plt.subplots(figsize=(9, 5))
         for c, tm in zip(_time_colours(len(ctx.fluid_times)), ctx.fluid_times):
             ax.plot(ctx.r, _line_values(np.abs(E[tm.index]), "log"), color=c, marker=".",
                     label=tm.label)
-            ax.plot(ctx.r, _line_values(eceff[tm.index], "log"), color=c, ls="--")
+            if critical:
+                ax.plot(ctx.r, _line_values(eceff[tm.index], "log"), color=c, ls="--")
         ax.set_yscale("log")
         ax.set_xlabel(RADIUS_LABEL)
         ax.set_ylabel("Electric field [V/m]")
-        ax.set_title(r"$|E_\parallel|$ (solid) and $E_{\rm c,eff}$ (dashed)")
+        ax.set_title(r"$|E_\parallel|$ (solid) and $E_{\rm c,eff}$ (dashed)" if critical
+                     else r"$|E_\parallel|$, radial profiles")
         _legend_outside(ax)
     return fig
 
@@ -331,9 +340,27 @@ def _critical_field_ratio_map(ctx: Context):
     eceff = ctx.field("Eceff")
     w = ctx.window
     with plt.rc_context(plotting.MESH_RC):
-        return plotting.critical_field_ratio_2D(
+        return plotting.critical_field_ratio_bands_2D(
             E[w], eceff[w], ctx.r, ctx.t_ms[w], xlabel=RADIUS_LABEL, ylabel=TIME_LABEL,
-            title=r"$\log_{10}(|E_\parallel| / E_{\rm c,eff})$",
+            ylim=(ctx.t_ms[w][0], ctx.t_ms[w][-1]),
+            title=r"$|E_\parallel| / E_{\rm c,eff}$",
+        )
+
+
+#: Half-width of the linear band of the electric field map, V/m.
+E_MAP_LINTHRESH = 1e-2
+
+
+def _electric_field_map(ctx: Context):
+    E = ctx.field("E_field")
+    w = ctx.window
+    with plt.rc_context(plotting.MESH_RC):
+        return plotting.basic_2D(
+            E[w], ctx.r, ctx.t_ms[w], mesh=True, normalization="symlog",
+            linthresh=E_MAP_LINTHRESH, xlabel=RADIUS_LABEL, ylabel=TIME_LABEL,
+            ylim=(ctx.t_ms[w][0], ctx.t_ms[w][-1]), title=r"$E_\parallel$",
+            cbarlabel=r"$E_\parallel$ [V/m], symlog, linear within $\pm$"
+                      f"{E_MAP_LINTHRESH:g}",
         )
 
 
@@ -583,6 +610,7 @@ def plan(run, selection: Selection | None = None) -> list[tuple[str, Callable]]:
     items += [
         ("electric_field_average", lambda: _electric_field(ctx, None)),
         ("electric_field_profiles", lambda: _electric_field_profiles(ctx)),
+        ("electric_field_map", lambda: _electric_field_map(ctx)),
         ("critical_field_ratio_map", lambda: _critical_field_ratio_map(ctx)),
         ("generation_rates", lambda: _generation_rates(ctx)),
     ]

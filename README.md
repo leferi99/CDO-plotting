@@ -120,8 +120,13 @@ Fluid figures use `selection.fluid`:
 - `<quantity>_map`: over time and radius.
 - Quantities: temperature, electron, runaway and hot densities, ohmic, runaway, hot and total current densities, radiated power, Z_eff.
 - `electric_field_<r/a>` and `electric_field_average`: |E|, E_c,eff and E_c,tot, with |E|/E_c,eff on the right axis.
-- `electric_field_profiles`, `critical_field_ratio_map`.
+- `electric_field_profiles`: |E| at the chosen times, with E_c,eff dashed when `fluid.critical_field_profiles = True`.
+- `electric_field_map`: signed E over time and radius, symlog, linear within ±0.01 V/m.
+- `critical_field_ratio_map`: |E|/E_c,eff over time and radius in discrete colour bands with labelled edges (0, 0.25, 0.5, 0.75, 0.9, 1, 1.1, 1.5, 2, 3, 5, 10, 20, 50, 100), blue below 1 and red above, with the ratio-one contour in black.
 - `generation_rates` and `rate_map_<channel>`: see below.
+
+`Selection.skip` defaults to `cdo.selection.DEFAULT_SKIP`, which leaves out the traces and maps of Z_eff and n_cold, the traces of the current densities, the electric-field traces `electric_field_<r/a>` and `electric_field_average`, and `electric_field_map`, so the field is shown by `electric_field_profiles` and `critical_field_ratio_map`.
+`skip=[]` makes every figure, and `skip=[*DEFAULT_SKIP, ...]` adds to the list.
 
 Kinetic figures use `selection.kinetic`, one file per grid, radius and range:
 
