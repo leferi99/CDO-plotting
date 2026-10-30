@@ -6,16 +6,23 @@ A run is usually split across several HDF5 output files, and the datasets presen
 
 ## Requirements
 
-Python with `numpy`, `scipy`, `h5py` and `matplotlib`.
-The notebooks also use `jupyterlab`, `jupytext` and `ipywidgets`.
+Python 3.10 or later with `numpy`, `scipy`, `h5py` and `matplotlib`, listed in `pyproject.toml`.
+The notebooks also use `jupyterlab`, `jupytext` and `ipywidgets` (extra `notebooks`), the tests `pytest` (extra `test`).
 A DREAM install is not needed for reading, moments, or plotting.
 It is used only by the optional cross-check tests.
 
-The project venv is `.venv` in this folder:
+The project venv is `.venv` in this folder, with the package installed in editable mode:
 
 ```bash
 python -m venv .venv
-.venv/bin/python -m pip install numpy scipy h5py matplotlib pytest jupyterlab jupytext ipywidgets
+.venv/bin/python -m pip install -e ".[notebooks,test]"
+```
+
+With `uv`:
+
+```bash
+uv venv
+uv pip install -e ".[notebooks,test]"
 ```
 
 ## Layout
@@ -170,18 +177,18 @@ Time axes start at 0 ms, and momentum and energy axes at 0, even where the data 
 It takes one `cdo.AvalancheParams` or a list, each drawn with its own line style, dashed, dotted, dash-dotted in list order:
 
 - on `f_combined_`, `dndp_combined_` and `dnde_combined_`, over the runaway-grid momenta, in the colour of the data of each time;
+- on `favg_re_ravg`, `dnde_re_ravg` and the radially averaged combined figures, with each radial cell's own n_re, normalised like the data, so with `"per_electron"` only the shape compares;
 - on `pitch_re_`, in the colour of the data of each drawn pitch cell.
+
+`kinetic.analytic` is `None` by default. The notebooks switch it with `SHOW_ANALYTIC`, off by default, next to the parameters in `SET_VALUES`.
 
 The parameters are `E_over_Ec`, `Z_tot`, `lnLambda` and `c_Z` (default sqrt(5 + Z_tot)), with defaults E/E_c = 50, Z_tot = 1.4, lnΛ = 14.3.
 A parameter set to `None` comes from the run at each time and radius: E/E_c = |E_field| / Ectot, Z = Zeff, lnΛ = lnLambdaC, with the field names overridable.
 `AvalancheParams.from_run()` takes all three from the run, so `analytic=[AvalancheParams(), AvalancheParams.from_run()]` compares the set values with the run's.
 A box on the figure lists the values used: set values once, run values per time.
 `n_re` defaults to the run's n_re at each time and radius.
-- on `favg_re_ravg`, `dnde_re_ravg` and the radially averaged combined figures, with each radial cell's own n_re, normalised like the data, so with `"per_electron"` only the shape compares;
 `direction = +1` puts the beam at ξ = +1, where DREAM has the runaways for E > 0; the paper uses ξ = -1.
 The analytic f is averaged over each pitch cell and angle-averaged through the same moment code as the data, so the curves compare cell by cell.
-`kinetic.analytic` is `None` by default. The notebooks switch it with `SHOW_ANALYTIC`, off by default, next to the parameters in `SET_VALUES`.
-
 The pitch-averaged f does not depend on E/E_c, so on the combined figures the run values change the curve only through γ0.
 
 `kinetic.combined_per_time = True` splits the combined figures into one per time, `f_combined_<r/a>[_<range>]_t<ms>ms`.
