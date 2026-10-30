@@ -1,5 +1,6 @@
 # Working documents
 REFACTOR_PLAN.md
+docs/local-setup.md
 
 # Editors and environments
 .ipynb_checkpoints/
@@ -8,9 +9,13 @@ REFACTOR_PLAN.md
 .idea/
 .venv/
 venv/
+# if symlinked
+.venv
 
 # Python caches
 __pycache__/
+*.egg-info/
+build/
 *.py[cod]
 
 # DREAM sources and CLI helpers checked out alongside
@@ -18,6 +23,7 @@ __pycache__/
 /cli
 
 # Data and scratch
+/data
 *.h5
 *.dump
 /git_ignore

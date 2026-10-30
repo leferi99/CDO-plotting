@@ -1,3 +1,19 @@
+# ---
+# jupyter:
+#   jupytext:
+#     formats: py:percent
+#     text_representation:
+#       extension: .py
+#       format_name: percent
+#       format_version: '1.3'
+#       jupytext_version: 1.19.6
+#   kernelspec:
+#     display_name: Python 3 (ipykernel)
+#     language: python
+#     name: python3
+# ---
+
+# %% editable=true deletable=true slideshow={"slide_type": ""}
 """Drag force on electrons (the Chandrasekar figure), as REPL cell (# %%) script.
 
 A standalone schematic of the collisional drag force against parallel momentum,
@@ -10,7 +26,9 @@ import os
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+REPO_ROOT = next(p for p in (Path.cwd(), *Path.cwd().parents)
+                 if (p / "cdo" / "__init__.py").exists())
+sys.path.insert(0, str(REPO_ROOT))
 
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
@@ -18,7 +36,6 @@ import numpy as np
 import scipy.interpolate
 import scipy.stats
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
 CSV = REPO_ROOT / "Chandrasekar.csv"
 OUTPUT = os.environ.get("CDO_OUTPUT_FILE", "")  # e.g. drag_force.png; empty shows the figure
 

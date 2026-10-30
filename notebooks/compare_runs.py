@@ -1,0 +1,61 @@
+# ---
+# jupyter:
+#   jupytext:
+#     formats: py:percent
+#   kernelspec:
+#     display_name: Python 3 (ipykernel)
+#     language: python
+#     name: python3
+# ---
+
+# %% [markdown]
+# # Compare runs
+#
+# Overlays of I_p, I_RE, I_hot and the volume-averaged temperature for any set
+# of runs. Tick runs in the box, or list folders in `RUNS` by hand.
+
+# %%
+import os
+import sys
+from pathlib import Path
+
+REPO = next(p for p in (Path.cwd(), *Path.cwd().parents) if (p / "cdo" / "__init__.py").exists())
+sys.path.insert(0, str(REPO))
+
+import cdo
+from cdo import figures
+
+cdo.plotting.use_base_style(fontsize=11)
+
+# %%
+picker = cdo.pick_runs()
+
+# %%
+DEFAULT_RUNS = os.environ.get("CDO_RUNS", "").split(":") if os.environ.get("CDO_RUNS") else [
+    cdo.paths.run_folder("dream_runs", "iter-nrt/iter_dthmode24_rp_boltzmann-eqterm"),
+    cdo.paths.run_folder("dream_runs", "iter-nrt/iter_dthmode24_boltzmann_boltzmann-eqterm"),
+]
+RUNS = picker.selected or [Path(p) for p in DEFAULT_RUNS]
+if not picker.selected:
+    print("No runs ticked in the picker, using DEFAULT_RUNS. Tick runs and re-run this cell.")
+runs = {Path(folder).name: cdo.Run.from_folder(folder) for folder in RUNS}
+for label, run in runs.items():
+    print(f"{label}: {run.timegrid_ms[-1]:.4g} ms, {len(run.files)} legs")
+
+# %% [markdown]
+# ## Options
+# `time_shift_ms` moves a run on the time axis, for example to JOREK time.
+# `styles` sets line styles per run label. `references` adds curves or points
+# to a figure: `{"compare_plasma_current": [(label, t_ms, I_MA, style)]}`.
+
+# %%
+time_shift_ms = {}
+styles = {}
+references = {}
+
+SAVE = False  # True or 1 saves to CDO_FIGURE_ROOT/notebook/_comparison/, False or 0 shows them here
+OUT = os.environ.get("CDO_OUT") or (
+    cdo.paths.figure_root() / "notebook" / "_comparison" if SAVE else None)
+made = figures.compare(runs, out=OUT, time_shift_ms=time_shift_ms, styles=styles,
+                       references=references)
+print(made)

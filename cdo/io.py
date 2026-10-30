@@ -25,6 +25,10 @@ OUTPUT_PATTERN = "output*.h5"
 #: so they are excluded unless asked for.
 INIT_PREFIX = "output_init"
 
+#: Marker of a leg still being written, or one interrupted before it was
+#: committed. Such a file may hold a single time step and is never returned.
+IN_PROGRESS_MARKER = ".inprogress."
+
 _NUMBER = re.compile(r"\d+")
 
 
@@ -32,8 +36,8 @@ def add_dream_to_path(checkout: str | os.PathLike) -> Path:
     """Put a DREAM checkout's ``py`` directory on ``sys.path``.
 
     ``checkout`` is either the root of a DREAM source tree or its ``py``
-    subdirectory. The DREAM Python package is not installed into the environment
-    on Komondor, so this has to run before ``import DREAM``. Which checkout is
+    subdirectory. The DREAM Python package is often not installed into the plotting
+    environment, so this has to run before ``import DREAM``. Which checkout is
     used matters: the ``DREAMOutput`` methods this package relies on, such as
     ``j_re.current()`` and ``f_re.angleAveraged()``, differ between versions.
     """
@@ -69,7 +73,8 @@ def find_outputs(
     """List a run's output files in time order.
 
     Names have varied between runs, so one glob matches them all and ordering is
-    done on the embedded numbers. Settings files are never returned.
+    done on the embedded numbers. Settings files and uncommitted
+    ``*.inprogress.h5`` legs are never returned.
 
     Initialisation files are excluded unless ``init`` is true. They hold the
     current-matching phase, a couple of time steps with the temperature and wall
@@ -87,6 +92,7 @@ def find_outputs(
         p
         for p in folder.glob(pattern or OUTPUT_PATTERN)
         if not p.name.startswith("settings")
+        and IN_PROGRESS_MARKER not in p.name
         and (init or not p.name.startswith(INIT_PREFIX))
         and (prefix is None or p.name.startswith(prefix))
     ]

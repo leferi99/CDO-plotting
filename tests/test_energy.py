@@ -51,6 +51,23 @@ def test_to_energy_applies_the_jacobian_to_any_moment(grid):
     assert grid.to_energy(f) == pytest.approx(f * grid.dp_dE)
 
 
+def test_to_energy_per_mev_rescales_the_joule_spectrum(grid):
+    # dn/dE in per-MeV is the per-Joule spectrum times Joules-per-MeV.
+    f = np.ones((2, 3, grid.p.size))
+    per_J = grid.to_energy(f)
+    per_MeV = grid.to_energy(f, per="MeV")
+    assert per_MeV == pytest.approx(per_J * scipy.constants.e * 1e6)
+    assert grid.to_energy(f, per="J") == pytest.approx(per_J)
+
+
+def test_integrate_is_unaffected_by_the_energy_unit_option(grid):
+    # integrate stays on the SI path, so it still recovers the dp integral.
+    moment = np.ones((2, 3, grid.p.size))
+    dp = np.diff(grid.p_edges)
+    over_p = np.tensordot(moment, dp, axes=([-1], [0]))
+    assert grid.integrate(moment) == pytest.approx(over_p, rel=0.02)
+
+
 def test_integrate_over_energy_equals_integrate_over_momentum(grid):
     """A per-dp moment integrated over dE recovers its dp integral, up to
     the midpoint discretisation between cell centres and edges."""

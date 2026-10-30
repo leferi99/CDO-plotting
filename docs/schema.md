@@ -8,7 +8,7 @@
 
 ```python
 "major_radius": _f("grid/R0", "settings/radialgrid/R0", required=True, unit="m"),
-"gammaHottail": _fluid("other/fluid/gammaFhot", "other/fluid/gammaHottail"),
+"gammaFhot": _fluid("other/fluid/gammaFhot", unit="1/(s m$^3$)"),
 ```
 
 The `Field` attributes:
@@ -49,6 +49,8 @@ Adding support for a new output layout is a table edit.
 
 - A field moved to a new path: add the new path to that field's `paths`, before the old ones.
 - A field renamed: add the new name as the first path. A rename inside `other/` cannot be distinguished from an inactive module by the file alone, so both names stay in the table.
+  Check the DREAM source before treating two names as one field.
+  `gammaFhot` (flux out of the hot-tail grid) and `gammaHottail` (analytic hot-tail rate) look alike but are different quantities, so they are separate fields.
 - A new quantity: add a `Field` entry with its path, its `time` axis, and any `grid` or `group` gate.
 
 Run the resolver against a file from the new era with `cdo.describe(path)` and check that nothing needed lands in the `MISSING` category.

@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cdo-plotting"
+version = "0.1.0"
+description = "Consistent plotting of DREAM output across DREAM versions and run setups"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "scipy",
+    "h5py",
+    "matplotlib",
+]
+
+[project.optional-dependencies]
+notebooks = ["jupyterlab", "jupytext", "ipywidgets"]
+test = ["pytest"]
+
+[project.urls]
+Repository = "https://github.com/leferi99/CDO-plotting"
+
+[tool.setuptools]
+packages = ["cdo"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

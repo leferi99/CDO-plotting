@@ -21,6 +21,15 @@ C = scipy.constants.c
 MEC2_J = M_E * C**2  # rest energy in joules
 MEC2_EV = 510998.95  # rest energy in electronvolts
 
+#: Joules per energy unit, for expressing a per-energy spectrum in a chosen unit.
+#: A spectrum's dE unit changes by this scalar, dn/dE_unit = dn/dE_J * (J/unit).
+J_PER_ENERGY_UNIT = {
+    "J": 1.0,
+    "eV": scipy.constants.e,
+    "keV": scipy.constants.e * 1e3,
+    "MeV": scipy.constants.e * 1e6,
+}
+
 
 @dataclass
 class EnergyGrid:
@@ -69,7 +78,7 @@ class EnergyGrid:
             MEC2_J * np.sqrt(self.total_energy_J**2 - MEC2_J**2)
         )
 
-    def to_energy(self, moment_per_dp: np.ndarray) -> np.ndarray:
+    def to_energy(self, moment_per_dp: np.ndarray, *, per: str = "J") -> np.ndarray:
         r"""Re-express a per-momentum spectrum as a per-energy spectrum.
 
         Multiplies by :math:`\mathrm{d}p/\mathrm{d}E`, turning a quantity whose
@@ -80,12 +89,17 @@ class EnergyGrid:
         moment ``Run.angle_average("runaway", "current")`` becomes
         :math:`\mathrm{d}j/\mathrm{d}E`.
 
+        ``per`` sets the energy unit of the ``dE`` in the denominator, one of
+        ``"J"`` (the default, matching :meth:`integrate`), ``"eV"``, ``"keV"`` or
+        ``"MeV"``. Only the unit changes, by the scalar Joules-per-unit factor, so
+        a plot in MeV can share the energy unit of its x-axis.
+
         The pitch weighting stays inside the moment. Building a current by
         multiplying the density spectrum by speed, as the retired
         ``distribution.py`` did in ``alternate_current``, drops that weighting
         and overcounts by a large factor; use the current moment instead.
         """
-        return moment_per_dp * self.dp_dE
+        return moment_per_dp * self.dp_dE * J_PER_ENERGY_UNIT[per]
 
     def integrate(self, moment_per_dp: np.ndarray) -> np.ndarray:
         r"""Integrate a per-momentum moment over the energy grid, ``(t, r)``.
