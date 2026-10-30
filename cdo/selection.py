@@ -65,8 +65,8 @@ class KineticSelection:
 
     ``analytic`` is an :class:`~cdo.avalanche.AvalancheParams`, or a list of
     them such as ``[AvalancheParams(), AvalancheParams.from_run()]``, adding
-    the analytic avalanche distribution to the combined angle averages and the
-    pitch line plots; ``None`` leaves it out. ``combined_per_time`` splits the
+    the analytic avalanche distribution to the combined angle averages, the
+    radial averages and the pitch line plots; ``None`` leaves it out. ``combined_per_time`` splits the
     combined figures into one per time, named ``..._t<ms>ms``.
 
     ``ranges`` apply to the maps, spectra and line plots of each grid. The
@@ -75,6 +75,11 @@ class KineticSelection:
     plots (``favg_re`` and ``pitch_re``) add ``runaway_zoom_ranges``, 0-40 MeV
     by default. All ranges are in ``range_unit``; 10 MeV is p = 20.5 m_e c and
     40 MeV is p = 79.3 m_e c.
+
+    ``radial_average`` adds the radially averaged line plots, ``*_ravg*``:
+    each radial cell weighted by its volume, divided by the runaway-grid
+    integral for ``"per_electron"`` (the default, the spectrum per runaway
+    electron), or not for ``"volume"``. ``None`` leaves them out.
     """
 
     times_ms: str | Sequence = "auto"
@@ -88,6 +93,7 @@ class KineticSelection:
     combined_per_time: bool = False
     combined_ranges: Sequence[tuple] = ((None, 10.0),)
     runaway_zoom_ranges: Sequence[tuple] = ((None, 40.0),)
+    radial_average: str | None = "per_electron"
 
 
 #: Figures a :class:`Selection` leaves out unless ``skip`` is given: Z_eff and

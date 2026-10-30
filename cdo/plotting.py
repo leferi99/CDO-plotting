@@ -693,12 +693,57 @@ def _cached_angle_average(run, grid, moment):
     return cache[key]
 
 
+#: Radial averages of :func:`angle_averaged_combined_1D`, see its docstring.
+RADIAL_AVERAGES = ("per_electron", "volume")
+#: Title text of each radial average.
+RADIAL_TITLES = {"per_electron": "radial average per runaway electron",
+                 "volume": "volume average"}
+#: y-axis labels of the radial averages, by average and moment.
+_RADIAL_YLABELS = {
+    "per_electron": {
+        "distribution": r"$\langle f\rangle_V / \bar n_{\rm RE}$ [$(m_e c)^{-3}$]",
+        "density": r"$N_{\rm RE}^{-1}\,dN/dp$ [$(m_e c)^{-1}$]",
+        "energy": r"$N_{\rm RE}^{-1}\,dN/dE$ [MeV$^{-1}$]",
+    },
+    "volume": {
+        "distribution": r"$\langle f\rangle_V$ [m$^{-3}$ $(m_e c)^{-3}$]",
+        "density": r"$\langle dn/dp\rangle_V$ [m$^{-3}$ $(m_e c)^{-1}$]",
+        "energy": r"$\langle dn/dE\rangle_V$ [m$^{-3}$ MeV$^{-1}$]",
+    },
+}
+
+
+def _volume_mean(values, volumes):
+    """Volume average over the radius axis of ``(t, r, p)``, giving ``(t, p)``."""
+    from .derived import volume_average
+
+    return volume_average(np.moveaxis(values, 1, -1), np.asarray(volumes, dtype=float))
+
+
+def _momentum_weights(run, prefix, basis):
+    """Weights summing a moment over a grid's momentum cells into a density.
+
+    dn/dp needs the cell widths dp, the pitch-mean f also 4 pi p^2.
+    """
+    read = run.reference.read
+    dp = np.diff(read(f"{prefix}_p_edges"))
+    return 4.0 * np.pi * read(f"{prefix}_p") ** 2 * dp if basis == "distribution" else dp
+
+
+def _per_electron(values, total):
+    """``values`` over ``total``, NaN where ``total`` is not positive."""
+    total = np.asarray(total, dtype=float)[..., None]
+    with np.errstate(invalid="ignore", divide="ignore"):
+        return np.where(total > 0, values / np.where(total > 0, total, 1.0), np.nan)
+
+
 def angle_averaged_combined_1D(
     run,
     moment="distribution",
     *,
     times_ms="auto",
     r_over_a=0.0,
+    radial_average=None,
     p_range=(None, None),
     figsize=(9, 5),
     ylim=(None, None),
@@ -724,6 +769,14 @@ def angle_averaged_combined_1D(
     :class:`~cdo.selection.Selection` is. ``p_range`` keeps the momentum cells
     inside ``(min, max)`` in m_e c, ``None`` meaning the grid edge.
 
+    ``radial_average`` replaces the single radius by an average over all
+    radial cells, weighted by cell volume, so every cell counts with its own
+    density: ``"volume"`` gives the volume average, ``"per_electron"`` the
+    same divided by its own integral over the runaway grid, the spectrum per
+    runaway electron. The integral covers the whole runaway grid, whatever
+    ``p_range`` shows, and the hot-tail part of a joined figure is divided
+    by the same number.
+
     Each time gives one curve, the hot-tail grid followed by the runaway grid
     in the same colour, early times light and late times dark. A single time
     is drawn in a darker blue. A grey dashed vertical line marks the
@@ -737,23 +790,44 @@ def angle_averaged_combined_1D(
     averaged the same way as the data, with the line style of its position in
     the list (``ANALYTIC_STYLES``), in the colour of the data of each time. A box at lower left lists the values used, per
     time for values taken from the run. Times with no runaways get no curve.
+    With ``radial_average`` the analytic f of each radial cell takes that
+    cell's n_RE, and ``"per_electron"`` divides it by its own integral too.
     """
+    from . import avalanche
     from .selection import snap_radii, snap_times  # selection imports this module
 
     if moment not in _COMBINED_YLABELS:
         raise ValueError(f"moment must be one of {list(_COMBINED_YLABELS)}, got {moment!r}")
+    if radial_average is not None and radial_average not in RADIAL_AVERAGES:
+        raise ValueError(f"radial_average must be None or one of {list(RADIAL_AVERAGES)}, "
+                         f"got {radial_average!r}")
     energy = moment == "energy"
     basis = "density" if energy else moment
     grids = tuple(grids)
     prefixes = {"hottail": "hot", "runaway": "re"}
+    per_electron = radial_average == "per_electron"
+    if per_electron and grids[-1] != "runaway":
+        raise ValueError("the per-electron average needs the runaway grid")
     parts = []
     for grid in grids:
         values = _cached_angle_average(run, grid, basis)
         if values is None:
             raise ValueError(f"the {grid} grid must be enabled")
-        if energy:
-            values = values * _per_MeV(run, prefixes[grid])
         parts.append(values)
+    if radial_average is None:
+        radius = snap_radii(run.radialgrid, run.minor_radius, [r_over_a])[0]
+        parts = [values[:, radius.cell] for values in parts]
+        place = radius.label
+    else:
+        radius = None
+        parts = [_volume_mean(values, run.cell_volumes) for values in parts]
+        if per_electron:
+            weights = _momentum_weights(run, "re", basis)
+            total = np.nansum(parts[-1] * weights, axis=-1)
+            parts = [_per_electron(values, total) for values in parts]
+        place = RADIAL_TITLES[radial_average]
+    if energy:
+        parts = [values * _per_MeV(run, prefixes[grid]) for values, grid in zip(parts, grids)]
     data = np.concatenate(parts, axis=-1)
     p = np.concatenate([run.reference.read(f"{prefixes[g]}_p") for g in grids])
     joined = len(grids) > 1
@@ -770,7 +844,6 @@ def angle_averaged_combined_1D(
         keep &= p <= hi
     keep_re = keep[len(p) - n_re:]
     times = snap_times(run.timegrid_ms, times_ms, lines=False)
-    radius = snap_radii(run.radialgrid, run.minor_radius, [r_over_a])[0]
     models = _analytic_list(analytic) if n_re else []
     single = len(times) == 1
 
@@ -782,17 +855,29 @@ def angle_averaged_combined_1D(
         else:
             palette = plt.cm.viridis(np.linspace(0.9, 0.0, max(len(times), 1)))
         for c, tm in zip(palette, times):
-            values = data[tm.index, radius.cell]
+            values = data[tm.index]
             values = np.where(values > 0, values, np.nan)
             axes.plot(x[keep], values[keep], color=c, label=tm.label)
             for k, params in enumerate(models):
-                resolved = params.resolve(run, tm.index, radius.cell)
+                style = dict(color=c, linestyle=ANALYTIC_STYLES[k % len(ANALYTIC_STYLES)])
+                if radius is not None:
+                    resolved = params.resolve(run, tm.index, radius.cell)
+                    if params.run_parameters:
+                        box.append(f"{params.kind}, {tm.label}: {resolved.text}")
+                    if resolved.drawable:
+                        model = avalanche.angle_average(run, "runaway", radius.cell,
+                                                        resolved.params, resolved.n_re, basis)
+                        _plot_analytic_average(axes, run, model, energy, keep_re, **style)
+                    continue
+                model, missing = avalanche.radial_average(run, params, tm.index, basis)
                 if params.run_parameters:
-                    box.append(f"{params.kind}, {tm.label}: {resolved.text}")
-                if resolved.drawable:
-                    _plot_analytic_average(axes, run, resolved, moment, radius.cell, keep_re,
-                                           color=c,
-                                           linestyle=ANALYTIC_STYLES[k % len(ANALYTIC_STYLES)])
+                    box.append(f"{params.kind}, {tm.label}: " +
+                               ("run has no " + ", ".join(missing) + " at some radii"
+                                if missing else "values per radial cell"))
+                if model is not None:
+                    if per_electron:
+                        model = _per_electron(model, np.sum(model * weights))
+                    _plot_analytic_average(axes, run, model, energy, keep_re, **style)
         for k, params in enumerate(models):
             colour = palette[0] if single else "grey"
             axes.plot([], [], color=colour, linestyle=ANALYTIC_STYLES[k % len(ANALYTIC_STYLES)],
@@ -805,8 +890,11 @@ def angle_averaged_combined_1D(
         axes.set_ylim(ylim)
         _start_at(axes, None if lo is None else (float(_kinetic_MeV(lo)) if energy else lo))
         axes.set_xlabel(xlabel or (ENERGY_LABEL if energy else MOMENTUM_LABEL))
-        axes.set_ylabel(ylabel or _COMBINED_YLABELS[moment])
-        axes.set_title(title or radius.label, fontsize="medium")
+        if ylabel is None:
+            ylabel = (_COMBINED_YLABELS if radius is not None
+                      else _RADIAL_YLABELS[radial_average])[moment]
+        axes.set_ylabel(ylabel)
+        axes.set_title(title or place, fontsize="medium")
         axes.legend(fontsize="small", loc="upper left", bbox_to_anchor=(1.01, 1.0))
         _annotate(axes, _cap(box))
 
@@ -820,13 +908,8 @@ def _cap(lines, limit=_BOX_LINES):
     return lines[:limit] + [f"... {len(lines) - limit} more"]
 
 
-def _plot_analytic_average(axes, run, resolved, moment, radial_cell, keep, **style):
-    """Analytic angle average on the runaway-grid momenta inside ``keep``."""
-    from . import avalanche
-
-    energy = moment == "energy"
-    values = avalanche.angle_average(run, "runaway", radial_cell, resolved.params,
-                                     resolved.n_re, "density" if energy else moment)
+def _plot_analytic_average(axes, run, values, energy, keep, **style):
+    """An analytic angle average (pitch-mean f or dn/dp) on the runaway-grid momenta in ``keep``."""
     p = run.reference.read("re_p")
     if energy:
         values = values * _per_MeV(run, "re")

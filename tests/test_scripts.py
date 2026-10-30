@@ -81,7 +81,7 @@ def test_default_kinetic_names_on_the_reference_run():
     _need_data()
     import cdo
     from cdo import figures
-    from cdo.selection import Selection
+    from cdo.selection import KineticSelection, Selection
 
     run = cdo.Run.from_folder(DATA_FOLDER)
     names = figures.names(run, Selection(only=["f_", "favg_", "pitch_", "dnde_", "dndp_",
@@ -93,5 +93,10 @@ def test_default_kinetic_names_on_the_reference_run():
     for kind in ("favg_re", "pitch_re"):
         assert f"{kind}_{radius}" in names and f"{kind}_{radius}_Emin-40MeV" in names
     assert not any(n.endswith("_Emin-40MeV") for n in names
-                   if not n.startswith(("favg_re", "pitch_re")))
+                   if not n.startswith(("favg_re", "pitch_re", "dnde_re_ravg")))
     assert not any(n.startswith("favg_hot") for n in names)
+    for name in ("favg_re_ravg", "favg_re_ravg_Emin-40MeV", "dnde_re_ravg",
+                 "f_combined_ravg_Emin-10MeV", "dnde_combined_ravg_Emin-10MeV"):
+        assert name in names
+    off = figures.names(run, Selection(kinetic=KineticSelection(radial_average=None)))
+    assert not any("_ravg" in n for n in off)

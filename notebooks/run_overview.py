@@ -82,6 +82,7 @@ print(run.report())
 # | | `combined_per_time` | one combined figure per time, `..._t<ms>ms` | `False` |
 # | | `combined_ranges` | ranges of the combined figures, for the hot-runaway boundary | `[(None, 10)]` |
 # | | `runaway_zoom_ranges` | extra ranges of `favg_re` and `pitch_re` | `[(None, 40)]` |
+# | | `radial_average` | radially averaged line plots, `*_ravg*`: `"per_electron"`, `"volume"` or `None` | `"per_electron"` |
 # | `Selection` | `skip` | figure names to leave out, as prefixes or wildcard patterns | `DEFAULT_SKIP` |
 # | | `only` | keep only names matching one of these prefixes or patterns | `[]` |
 #
@@ -129,13 +130,17 @@ print(run.report())
 #   `f_combined_`, `dndp_combined_` (angle-averaged f and dn/dp of both grids
 #   against |p|), `dnde_combined_` (dn/dE of both grids against kinetic
 #   energy), each followed by `<r/a>_<range>`.
+# - Radial averages, `ravg` in place of `<r/a>`: `favg_re_ravg`, `dnde_re_ravg`
+#   and the combined figures, each radial cell weighted by its volume, per
+#   runaway electron by default.
 #
 # ### Analytic avalanche distribution
 # `ANALYTIC` holds the parameters of the analytic avalanche f of Embréus et
-# al. 2018, eq. 2.17, drawn dashed on the combined and pitch figures in the
+# al. 2018, eq. 2.17, drawn dashed on the combined, radial-average and pitch figures in the
 # colour of the data. The defaults are the DEMO termination case. The
 # `distributions.py` notebook describes every parameter and the option to
-# take E/E_c, Zeff and lnΛ from the run. `ANALYTIC = None` leaves it out.
+# take E/E_c, Zeff and lnΛ from the run. `SHOW_ANALYTIC` switches the curves
+# on; off by default.
 #
 # The `<r/a>` tag is the snapped radius, so it depends on the run's radial
 # grid. On an 11-cell grid r/a = 0 becomes `ra0.05` and 0.9 becomes
@@ -143,7 +148,9 @@ print(run.report())
 # full grid has no tag. Copy names from the `figures.names` output.
 
 # %%
-ANALYTIC = cdo.AvalancheParams(E_over_Ec=50, Z_tot=1.4, lnLambda=14.3)
+SHOW_ANALYTIC = False  # True to draw the analytic curves
+SET_VALUES = cdo.AvalancheParams(E_over_Ec=50, Z_tot=1.4, lnLambda=14.3)
+ANALYTIC = SET_VALUES if SHOW_ANALYTIC else None
 
 # %% editable=true deletable=true slideshow={"slide_type": ""}
 sel = Selection(
@@ -162,6 +169,7 @@ sel = Selection(
         analytic=ANALYTIC,
         combined_ranges=[(None, 10)],
         runaway_zoom_ranges=[(None, 40)],
+        radial_average="per_electron",  # "volume", or None for no ravg figures
     ),
     skip=[*DEFAULT_SKIP],
     only=[],

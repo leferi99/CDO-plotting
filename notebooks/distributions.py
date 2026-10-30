@@ -68,6 +68,7 @@ print(run.report())
 # | `combined_per_time` | one combined figure per time, named `..._t<ms>ms` | `False` |
 # | `combined_ranges` | ranges of the combined figures, for the hot-runaway boundary | `[(None, 10)]` |
 # | `runaway_zoom_ranges` | extra ranges of `favg_re` and `pitch_re` | `[(None, 40)]` |
+# | `radial_average` | radially averaged line plots, `*_ravg*`: `"per_electron"`, `"volume"`, or `None` for none | `"per_electron"` |
 #
 # `only` and `skip` take figure-name prefixes, or wildcard patterns with `*`,
 # `?` or `[...]` matched against the whole name. The kinetic names are
@@ -85,6 +86,13 @@ print(run.report())
 # spectrum and combined f. `skip=["spectrum_*_Emin-10MeV"]` drops the spectra
 # of that range at every radius, `only=["*_combined_*_Emin-10MeV"]` keeps the
 # combined plots of that range only.
+#
+# The radial averages replace the `<r/a>` tag by `ravg`: `favg_re_ravg` and
+# `dnde_re_ravg` in `ranges` and `runaway_zoom_ranges`, and the combined
+# figures in `combined_ranges`. Each radial cell counts with its volume, and
+# `"per_electron"` divides by the integral over the whole runaway grid, so
+# the curves are spectra per runaway electron and the analytic curve,
+# normalised the same way, compares in shape only.
 #
 # The `<r/a>` tag is the snapped radius and depends on the run's radial grid:
 # on an 11-cell grid r/a = 0 becomes `ra0.05` and 1.0 becomes `ra0.95`. Range
@@ -119,14 +127,16 @@ print(run.report())
 #
 # The analytic f is averaged over each pitch cell, since its width in ξ
 # (about 1/A) is below the cell size near the beam, and the combined plots
-# average it the same way as the data. Set `ANALYTIC = None` to leave it out.
+# average it the same way as the data. `SHOW_ANALYTIC` switches the curves on;
+# off by default.
 # The cell prints the pitch cells, for choosing `pitch_cells`.
 
 # %%
 SET_VALUES = cdo.AvalancheParams(E_over_Ec=50, Z_tot=1.4, lnLambda=14.3, c_Z=None,
                                  n_re=None, direction=+1)
 RUN_VALUES = cdo.AvalancheParams.from_run(direction=+1)
-ANALYTIC = [SET_VALUES]  # [SET_VALUES, RUN_VALUES] to compare with the run's values
+SHOW_ANALYTIC = False  # True to draw the analytic curves
+ANALYTIC = [SET_VALUES] if SHOW_ANALYTIC else None  # [SET_VALUES, RUN_VALUES] to compare with the run's values
 print(f"set values: gamma0 = {SET_VALUES.gamma0:.1f}, mean energy = {SET_VALUES.gamma0 * 0.511:.1f} MeV")
 xi = run.reference.read("re_xi")
 if xi is not None:
@@ -147,6 +157,7 @@ sel = Selection(
         combined_per_time=False,
         combined_ranges=[(None, 10)],
         runaway_zoom_ranges=[(None, 40)],
+        radial_average="per_electron",  # "volume", or None for no ravg figures
     ),
     only=["f_", "favg_", "dnde_", "pitch_"],
 )
@@ -187,7 +198,7 @@ print("\n".join(fn))
 # **Pitch lines directly**, with the analytic curves dashed:
 # ```python
 # plotting.pitch_resolved_1D(run, "runaway", times_ms=[50, "end"], r_over_a=0.0,
-#                            pitch_cells=4, analytic=ANALYTIC)
+#                            pitch_cells=4, analytic=SET_VALUES)
 # plt.show()
 # ```
 #

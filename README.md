@@ -150,7 +150,16 @@ With both grids enabled, per radius, in `kinetic.combined_ranges` only (0-10 MeV
 - `dndp_combined_<r/a>[_<range>]`: the same for the pitch-integrated density per unit momentum, dn/dp. Skipped by default.
 - `dnde_combined_<r/a>[_<range>]`: dn/dE per MeV of both grids against kinetic energy.
 
-`cdo.plotting.angle_averaged_combined_1D` draws these directly (`moment` = `"distribution"`, `"density"` or `"energy"`), with times in ms, r/a and a momentum range in m_e c.
+Radial averages, with `kinetic.radial_average` set, carry `ravg` in place of the `<r/a>` tag:
+
+- `favg_re_ravg[_<range>]` and `dnde_re_ravg[_<range>]`: angle-averaged f and dn/dE of the runaway grid, in `ranges` and `runaway_zoom_ranges`.
+- `f_combined_ravg[_<range>]`, `dndp_combined_ravg[_<range>]` and `dnde_combined_ravg[_<range>]`: the combined figures, in `combined_ranges`.
+
+Every radial cell is weighted by its volume, so it counts with its own density, dN/dp = Σ_r dn/dp(r) ΔV_r.
+`"per_electron"` (the default) divides by the integral over the whole runaway grid, giving the spectrum per runaway electron; `"volume"` divides by the plasma volume; `None` leaves the figures out.
+The per-electron normalisation uses the kinetic integral, not the fluid `n_re`, which can differ from it by tens of percent.
+
+`cdo.plotting.angle_averaged_combined_1D` draws these directly (`moment` = `"distribution"`, `"density"` or `"energy"`), with times in ms, r/a or `radial_average`, and a momentum range in m_e c.
 
 The momentum on every axis is the total momentum |p| of DREAM's p/ξ grids.
 Time axes start at 0 ms, and momentum and energy axes at 0, even where the data starts later; a cropped time window or a momentum range starts at its own lower end.
@@ -168,8 +177,11 @@ A parameter set to `None` comes from the run at each time and radius: E/E_c = |E
 `AvalancheParams.from_run()` takes all three from the run, so `analytic=[AvalancheParams(), AvalancheParams.from_run()]` compares the set values with the run's.
 A box on the figure lists the values used: set values once, run values per time.
 `n_re` defaults to the run's n_re at each time and radius.
+- on `favg_re_ravg`, `dnde_re_ravg` and the radially averaged combined figures, with each radial cell's own n_re, normalised like the data, so with `"per_electron"` only the shape compares;
 `direction = +1` puts the beam at ξ = +1, where DREAM has the runaways for E > 0; the paper uses ξ = -1.
 The analytic f is averaged over each pitch cell and angle-averaged through the same moment code as the data, so the curves compare cell by cell.
+`kinetic.analytic` is `None` by default. The notebooks switch it with `SHOW_ANALYTIC`, off by default, next to the parameters in `SET_VALUES`.
+
 The pitch-averaged f does not depend on E/E_c, so on the combined figures the run values change the curve only through γ0.
 
 `kinetic.combined_per_time = True` splits the combined figures into one per time, `f_combined_<r/a>[_<range>]_t<ms>ms`.

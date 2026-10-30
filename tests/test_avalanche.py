@@ -284,3 +284,73 @@ def test_runaway_grid_alone_has_no_boundary_line():
     assert [line.get_linestyle() for line in curves] == ["-", "--"]
     assert not [line for line in ax.lines if len(set(line.get_xdata())) == 1]
     assert ax.get_xlim()[0] == 0.0
+
+
+# --- radial averages ---------------------------------------------------------------
+
+
+class _TwoRadiiRun(_StubRun):
+    """The stub run with two radial cells of different volume and runaway density."""
+
+    def __init__(self):
+        super().__init__()
+        self.radialgrid = np.array([0.1, 0.3])
+        self.cell_volumes = np.array([1.0, 3.0])
+        self.reference.arrays["re_p_edges"] = np.array([0.0, 10.0, 40.0, 80.0])
+        self._fields["n_re"] = np.array([[0.0, 0.0], [1e16, 4e16]])
+        for name in ("E_field", "Ectot", "Zeff", "lnLambdaC"):
+            self._fields[name] = np.repeat(self._fields[name], 2, axis=1)
+        self._mm.Vprime_VpVol = np.repeat(self._mm.Vprime_VpVol, 2, axis=0)
+        self.dndp = np.zeros((2, 2, 3))
+        self.dndp[1, 0] = [1.0, 2.0, 3.0]
+        self.dndp[1, 1] = [3.0, 2.0, 1.0]
+
+    def angle_average(self, grid, moment="distribution"):
+        if grid == "hottail":
+            return np.ones((2, 2, 2))
+        return self.dndp
+
+
+def _solid(ax):
+    return [line for line in ax.lines if line.get_linestyle() == "-" and len(line.get_xdata())]
+
+
+def test_radial_average_weights_cells_by_volume():
+    run = _TwoRadiiRun()
+    fig = plotting.angle_averaged_combined_1D(run, "density", times_ms=[1],
+                                              radial_average="volume", grids=("runaway",))
+    ax = fig.axes[0]
+    expected = (1.0 * np.array([1.0, 2.0, 3.0]) + 3.0 * np.array([3.0, 2.0, 1.0])) / 4.0
+    np.testing.assert_allclose(_solid(ax)[0].get_ydata(), expected)
+    assert "volume average" in ax.get_title()
+
+
+def test_per_electron_average_integrates_to_one_with_its_analytic_curve():
+    run = _TwoRadiiRun()
+    dp = np.diff(run.reference.arrays["re_p_edges"])
+    fig = plotting.angle_averaged_combined_1D(run, "density", times_ms=[0, 1],
+                                              radial_average="per_electron",
+                                              grids=("runaway",), analytic=AvalancheParams())
+    ax = fig.axes[0]
+    data = _solid(ax)
+    assert np.all(np.isnan(data[0].get_ydata()))  # no runaways at t = 0
+    assert np.sum(data[1].get_ydata() * dp) == pytest.approx(1.0)
+    dashed = [line for line in ax.lines if line.get_linestyle() == "--" and len(line.get_xdata())]
+    assert len(dashed) == 1  # none at t = 0
+    assert np.sum(dashed[0].get_ydata() * dp) == pytest.approx(1.0)
+    assert "per runaway electron" in ax.get_title()
+
+
+def test_analytic_radial_average_takes_each_cell_density():
+    run = _TwoRadiiRun()
+    params = AvalancheParams()
+    values, missing = avalanche.radial_average(run, params, 1, "density")
+    one = avalanche.angle_average(run, "runaway", 0, params, 1.0, "density")
+    np.testing.assert_allclose(values, (1.0 * 1e16 + 3.0 * 4e16) / 4.0 * one)
+    assert missing == []
+    assert avalanche.radial_average(run, params, 0, "density")[0] is None
+
+
+def test_radial_average_rejects_unknown_kind():
+    with pytest.raises(ValueError):
+        plotting.angle_averaged_combined_1D(_TwoRadiiRun(), radial_average="density")

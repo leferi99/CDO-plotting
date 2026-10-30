@@ -242,3 +242,36 @@ def density_at(run, params: AvalancheParams, time_index: int, radial_cell: int) 
         return float(params.n_re)
     n_re = run.field("n_re")
     return float(n_re[time_index, radial_cell]) if n_re is not None else float("nan")
+
+
+def radial_average(run, params: AvalancheParams, time_index: int,
+                   moment: str = "distribution") -> tuple:
+    """Volume average over radius of the analytic angle average on the runaway grid.
+
+    Each radial cell takes its own n_RE and, for parameters from the run, its
+    own E/E_c, Z_tot and lnΛ, and is weighted by its volume, as the data is.
+    ``moment`` is as in :func:`angle_average`. Returns the values over the
+    runaway-grid momenta, ``None`` when no cell can be drawn, and the run
+    fields missing at some radius.
+    """
+    if moment not in ("distribution", "density"):
+        raise ValueError(f"moment must be 'distribution' or 'density', got {moment!r}")
+    mm = run.moments("runaway")
+    if mm is None:
+        raise ValueError("run has no runaway grid")
+    volumes = np.asarray(run.cell_volumes, dtype=float)
+    total, missing, last, per_cell = None, [], None, None
+    for cell, volume in enumerate(volumes):
+        resolved = params.resolve(run, time_index, cell)
+        missing += [name for name in resolved.missing if name not in missing]
+        if not resolved.drawable:
+            continue
+        if resolved.params != last:
+            f = on_grid(run, "runaway", resolved.params, 1.0)
+            per_cell = mm.distribution(f) if moment == "distribution" else mm.density(f)
+            last = resolved.params
+        term = resolved.n_re * volume * (per_cell if moment == "distribution" else per_cell[cell])
+        total = term if total is None else total + term
+    if total is None:
+        return None, missing
+    return total / volumes.sum(), missing

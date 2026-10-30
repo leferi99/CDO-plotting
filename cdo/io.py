@@ -36,8 +36,8 @@ def add_dream_to_path(checkout: str | os.PathLike) -> Path:
     """Put a DREAM checkout's ``py`` directory on ``sys.path``.
 
     ``checkout`` is either the root of a DREAM source tree or its ``py``
-    subdirectory. The DREAM Python package is not installed into the environment
-    on Komondor, so this has to run before ``import DREAM``. Which checkout is
+    subdirectory. The DREAM Python package is often not installed into the plotting
+    environment, so this has to run before ``import DREAM``. Which checkout is
     used matters: the ``DREAMOutput`` methods this package relies on, such as
     ``j_re.current()`` and ``f_re.angleAveraged()``, differ between versions.
     """

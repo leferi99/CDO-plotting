@@ -37,7 +37,17 @@ Kinetic figures (selection ``kinetic``), per grid, radius and range:
   beam, ``"all"``, or a list of cells. ``pitch_re`` also for
   ``runaway_zoom_ranges``.
 
-With ``kinetic.analytic`` set, the combined and pitch figures also show the
+Radial averages, with ``kinetic.radial_average`` set (``"per_electron"`` by
+default), the radius tag replaced by ``ravg``: every radial cell weighted by
+its volume, per runaway electron or as a volume average:
+
+- ``favg_re_ravg[_<range>]`` and ``dnde_re_ravg[_<range>]``: angle-averaged f
+  against |p| and dn/dE against kinetic energy on the runaway grid, for
+  ``ranges`` and ``runaway_zoom_ranges``.
+- ``f_combined_ravg[_<range>]``, ``dndp_...`` and ``dnde_...``: as the
+  combined figures below.
+
+With ``kinetic.analytic`` set, the combined, radial-average and pitch figures also show the
 analytic avalanche distribution of :mod:`cdo.avalanche`: one set of curves
 per entry, dashed, dotted, dash-dotted in list order, with the values used
 in a box or the title.
@@ -532,15 +542,33 @@ def _distribution(ctx: Context, grid: str, radius: Radius, rng):
     return fig
 
 
-def _combined(ctx: Context, moment: str, radius: Radius, rng, time: Time | None = None):
+def _place(ctx: Context, radius: Radius | None) -> str:
+    """Title text of a radius, or of the radial average when ``radius`` is ``None``."""
+    if radius is None:
+        return plotting.RADIAL_TITLES[ctx.sel.kinetic.radial_average]
+    return radius.label
+
+
+def _combined(ctx: Context, moment: str, radius: Radius | None, rng, time: Time | None = None):
+    """Combined figure at ``radius``, or radially averaged when it is ``None``."""
     kin = ctx.sel.kinetic
-    title = f"Hot-tail and runaway grids, {radius.label}, {rng.label}"
+    title = f"Hot-tail and runaway grids, {_place(ctx, radius)}, {rng.label}"
     if time is not None:
         title += f", {time.label}"
     return plotting.angle_averaged_combined_1D(
         ctx.run, moment, times_ms=kin.times_ms if time is None else [time.ms],
-        r_over_a=radius.requested, p_range=rng.momentum(), analytic=kin.analytic,
-        title=title)
+        r_over_a=0.0 if radius is None else radius.requested,
+        radial_average=kin.radial_average if radius is None else None,
+        p_range=rng.momentum(), analytic=kin.analytic, title=title)
+
+
+def _runaway_radial_average(ctx: Context, moment: str, rng):
+    kin = ctx.sel.kinetic
+    what = "Angle-averaged f" if moment == "distribution" else "Energy spectrum"
+    return plotting.angle_averaged_combined_1D(
+        ctx.run, moment, times_ms=kin.times_ms, radial_average=kin.radial_average,
+        p_range=rng.momentum(), analytic=kin.analytic, grids=("runaway",),
+        title=f"{what}, runaway grid, {_place(ctx, None)}, {rng.label}")
 
 
 def _runaway_average(ctx: Context, grid: str, radius: Radius, rng):
@@ -664,10 +692,17 @@ def plan(run, selection: Selection | None = None) -> list[tuple[str, Callable]]:
                 for kind, builder in builders:
                     items.append((f"{kind}_{short}{suffix}",
                                   lambda b=builder, g=grid, r=rad, x=rng: b(ctx, g, r, x)))
+        if grid == "runaway" and ctx.sel.kinetic.radial_average:
+            for rng in [*ctx.ranges, *zooms]:
+                suffix = "_ravg" + (f"_{rng.tag}" if rng.tag else "")
+                for kind, moment in (("favg", "distribution"), ("dnde", "energy")):
+                    items.append((f"{kind}_re{suffix}",
+                                  lambda m=moment, x=rng: _runaway_radial_average(ctx, m, x)))
     if ctx.grid_on("hottail") and ctx.grid_on("runaway"):
-        for rad in ctx.kinetic_radii:
+        places = [*ctx.kinetic_radii, *([None] if ctx.sel.kinetic.radial_average else [])]
+        for rad in places:
             for rng in ctx.combined_ranges:
-                suffix = f"_{rad.tag}" + (f"_{rng.tag}" if rng.tag else "")
+                suffix = f"_{'ravg' if rad is None else rad.tag}" + (f"_{rng.tag}" if rng.tag else "")
                 for kind, moment in (("f", "distribution"), ("dndp", "density"),
                                      ("dnde", "energy")):
                     if not ctx.sel.kinetic.combined_per_time:
