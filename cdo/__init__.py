@@ -15,7 +15,7 @@ from .io import (
 )
 from .moments import MomentumMoments, current
 from . import plotting
-from . import avalanche, figures, paths, selection
+from . import avalanche, figures, fitting, paths, selection
 from .picker import pick_runs
 from .selection import FluidSelection, KineticSelection, Selection
 from .schema import (
@@ -37,6 +37,7 @@ __all__ = [
     "KineticSelection",
     "Selection",
     "figures",
+    "fitting",
     "paths",
     "pick_runs",
     "selection",
