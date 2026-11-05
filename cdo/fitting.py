@@ -15,17 +15,24 @@ Two forms of eq. (2.17) of Embréus et al., J. Plasma Phys. 84 (2018)
   A_hat is A/gamma at gamma = gamma_ref (20 by default), beta = 1 is the
   plain form. Free: C, gamma0, A_hat, beta.
 
-C is about the density the f integrates to, sum 2 pi p^2 f dxi dp, when
-the grid covers the bulk of the beam, so about 1 for an f per electron. Both forms are averaged over
-each pitch cell in closed form (:func:`cdo.avalanche.ln_pitch_cell_mean`),
-since DREAM stores cell averages and the beam can be narrower than a cell.
-The momentum dependence is taken at the cell centres.
+C is about the density the f integrates to, sum 2 pi p^2 f dxi dp, when the
+grid covers the bulk of the beam, so about 1 for an f per electron. Both
+forms are averaged over each pitch cell in closed form
+(:func:`cdo.avalanche.ln_pitch_cell_mean`), since DREAM stores cell averages
+and the beam can be narrower than a cell. The momentum dependence is taken
+at the cell centres.
 
 The fit is a least-squares fit of ln f over the fit cells (:func:`fit_cells`),
 unweighted by default, from several starting points. :func:`fit_joint` fits
 several distributions with a shared shape and one C each.
 :func:`distribution_from_run` gives the radially volume-averaged f per
 electron of a run at one time, the usual input.
+
+A beam narrower than the pitch cells next to it fixes only a lower limit of
+A. :class:`FitResult` therefore reports, per distribution, the number of
+pitch rows with fit cells and the smallest A dxi of the fit cell nearest the
+beam over the fitted momenta, and counts the beam as resolved when there are
+at least two rows and that A dxi is at most :data:`MAX_BEAM_A_DXI`.
 """
 
 from __future__ import annotations
@@ -34,7 +41,6 @@ import math
 from dataclasses import dataclass, field
 
 import numpy as np
-from scipy.optimize import least_squares
 
 from . import avalanche, derived
 
@@ -62,6 +68,15 @@ BETA_STARTS = (1.0, 0.5, 1.5)
 #: Distance in fit space (ln gamma0, ln A_hat, beta) below which a parameter
 #: counts as at a bound.
 AT_BOUND_TOL = 1e-3
+#: Largest A dxi of the fit cell nearest the beam, at the best-resolved
+#: fitted momentum, for which the beam counts as resolved. Above it the cell
+#: mean hardly depends on A, and the fit gives only a lower limit of A_hat.
+MAX_BEAM_A_DXI = 5.0
+
+
+def _check_direction(direction):
+    if direction not in (1, -1):
+        raise ValueError(f"direction must be +1 or -1, got {direction!r}")
 
 
 @dataclass
@@ -126,11 +141,21 @@ class FitResult:
     """Parameters and quality of a fit.
 
     ``C`` has one amplitude per distribution, one for :func:`fit_plain` and
-    :func:`fit_extended`. ``beta`` is 1 for the plain form. ``sigma`` holds
-    the 1 sigma uncertainties from the Jacobian, under the parameter names,
-    ``"C"`` as a tuple; a fixed beta has sigma 0. ``rms_log10`` is the RMS of
-    log10(f / fit) over the fit cells and ``n_cells`` their number, per
-    distribution. ``at_bound`` names the shape parameters at a bound.
+    :func:`fit_extended`. ``beta`` is 1 for the plain form.
+
+    ``sigma`` holds the 1 sigma uncertainties from the Jacobian,
+    cov = (J^T J)^-1 SSR / (N - k), under the parameter names, ``"C"`` as a
+    tuple. They are statistical only. A fixed beta has sigma 0, a parameter at
+    a bound NaN. With ``weighted=True`` they come from the weighted residuals
+    and measure the curvature of that cost, not a proper uncertainty.
+
+    Per distribution: ``rms_log10`` is the RMS of log10(f / fit) over the fit
+    cells and ``n_cells`` their number, ``n_pitch_rows`` the number of pitch
+    cells holding fit cells, ``beam_A_dxi`` the smallest A dxi of the fit
+    cell nearest the beam over the fitted momenta, and ``resolved`` whether
+    the beam is resolved (see :data:`MAX_BEAM_A_DXI`). ``at_bound`` names the
+    shape parameters at a bound. ``converged`` is the solver's success flag,
+    ``success`` also needs every beam resolved and finite parameters.
     """
 
     form: str
@@ -141,6 +166,10 @@ class FitResult:
     sigma: dict
     rms_log10: tuple
     n_cells: tuple
+    n_pitch_rows: tuple
+    beam_A_dxi: tuple
+    resolved: tuple
+    converged: bool
     success: bool
     at_bound: tuple
     gamma_ref: float = GAMMA_REF
@@ -151,7 +180,7 @@ class FitResult:
 
     def A(self, p) -> np.ndarray:
         """Pitch parameter A at momenta ``p`` in m_e c."""
-        return pitch_parameter(p, self.A_hat, self.beta, self.gamma_ref)
+        return pitch_parameter(p, self.A_hat, self.beta, gamma_ref=self.gamma_ref)
 
     def A_over_gamma(self, gamma) -> np.ndarray:
         """A/gamma at Lorentz factors ``gamma``, A_hat at gamma = gamma_ref."""
@@ -160,17 +189,20 @@ class FitResult:
 
     def model(self, p, xi_edges, dataset: int = 0) -> np.ndarray:
         """The fitted f, averaged over each pitch cell, shape ``(xi cells, p)``."""
-        return np.exp(ln_model(p, xi_edges, self.C[dataset], self.gamma0, self.A_hat,
-                               self.beta, gamma_ref=self.gamma_ref, direction=self.direction))
+        return model(p, xi_edges, self.C[dataset], self.gamma0, self.A_hat, self.beta,
+                     gamma_ref=self.gamma_ref, direction=self.direction)
 
 
 # --- models -----------------------------------------------------------------
 
 
-def pitch_parameter(p, A_hat, beta=1.0, gamma_ref=GAMMA_REF) -> np.ndarray:
-    """A = gamma_ref A_hat (gamma/gamma_ref)^beta, which is A_hat gamma for beta = 1."""
+def pitch_parameter(p, A_hat, beta=1.0, *, gamma_ref=GAMMA_REF) -> np.ndarray:
+    """A = gamma_ref A_hat (gamma/gamma_ref)^beta, which is A_hat gamma for beta = 1.
+
+    ``A_hat``, ``beta`` and ``gamma_ref`` are scalars.
+    """
     gamma = np.sqrt(1.0 + np.asarray(p, dtype=float) ** 2)
-    if beta == 1.0:
+    if float(beta) == 1.0:
         return A_hat * gamma
     return gamma_ref * A_hat * (gamma / gamma_ref) ** beta
 
@@ -179,9 +211,10 @@ def ln_model(p, xi_edges, C, gamma0, A_hat, beta=1.0, *, gamma_ref=GAMMA_REF,
              direction: int = 1) -> np.ndarray:
     """ln f of the fitted forms, averaged over each pitch cell, ``(xi cells, p)``.
 
-    ``beta = 1`` is the plain form.
+    ``beta = 1`` is the plain form. ``C`` must be positive.
     """
-    A = pitch_parameter(p, A_hat, beta, gamma_ref)
+    _check_direction(direction)
+    A = pitch_parameter(p, A_hat, beta, gamma_ref=gamma_ref)
     return avalanche.ln_distribution(p, xi_edges, C, gamma0, A, direction)
 
 
@@ -203,6 +236,7 @@ def fit_cells(f, p, xi_edges, *, xi_pass=0.0, p_min=P_MIN, f_thresh=F_THRESH,
     pitch cell lies at s xi >= ``xi_pass`` (s = ``direction``), and f is
     positive, finite and above ``f_thresh`` times the largest f.
     """
+    _check_direction(direction)
     f = np.asarray(f, dtype=float)
     p = np.asarray(p, dtype=float)
     s_edges = direction * np.asarray(xi_edges, dtype=float)
@@ -214,6 +248,28 @@ def fit_cells(f, p, xi_edges, *, xi_pass=0.0, p_min=P_MIN, f_thresh=F_THRESH,
     with np.errstate(invalid="ignore"):
         good = finite & (f > 0) & (f > f_thresh * fmax)
     return good & (p[None, :] > p_min) & beam_side[:, None]
+
+
+def beam_resolution(mask, p, xi_edges, A_hat, beta=1.0, *, gamma_ref=GAMMA_REF,
+                    direction: int = 1) -> tuple:
+    """Number of pitch rows with fit cells, and the smallest beam-cell A dxi.
+
+    For each momentum with fit cells, the fit cell nearest the beam (largest
+    s xi) gives A(p) dxi; the smallest over the momenta is returned. NaN when
+    there are no fit cells.
+    """
+    _check_direction(direction)
+    mask = np.asarray(mask, dtype=bool)
+    edges = np.asarray(xi_edges, dtype=float)
+    rows = int(np.count_nonzero(mask.any(axis=1)))
+    columns = np.flatnonzero(mask.any(axis=0))
+    if columns.size == 0:
+        return rows, math.nan
+    s_top = np.maximum(direction * edges[:-1], direction * edges[1:])
+    dxi = np.abs(np.diff(edges))
+    A = pitch_parameter(np.asarray(p, dtype=float)[columns], A_hat, beta, gamma_ref=gamma_ref)
+    nearest = [np.flatnonzero(mask[:, j])[np.argmax(s_top[mask[:, j]])] for j in columns]
+    return rows, float(np.min(A * dxi[nearest]))
 
 
 # --- fitting ----------------------------------------------------------------
@@ -248,20 +304,25 @@ def fit_joint(datasets, *, form: str = "extended", xi_pass=None, p_min=P_MIN,
     ``xi_pass``, ``p_min``, ``f_thresh`` and ``direction`` select the fit
     cells, see :func:`fit_cells`; ``xi_pass=None`` takes each distribution's
     own ``xi_pass``. ``masks`` gives the cells directly, one mask per
-    distribution. ``weighted=True`` multiplies each residual by the square
-    root of the cell content 2 pi p^2 f dxi dp, normalised to a mean of one
-    within each distribution (this needs ``p_edges``); ``rms_log10`` is always
-    unweighted. ``starts`` lists starting shapes, (gamma0, A_hat) or
-    (gamma0, A_hat, beta); by default the plain form starts from
-    :data:`PLAIN_STARTS`, the extended form from the best plain fit with each
-    beta of :data:`BETA_STARTS`. ``bounds`` replaces entries of
-    :data:`BOUNDS`. Raises ``ValueError`` when a distribution has fewer fit
-    cells than parameters.
+    distribution, where f must be finite and positive. ``weighted=True``
+    multiplies each residual by the square root of the cell content
+    2 pi p^2 f dxi dp, normalised to a mean of one within each distribution
+    (this needs ``p_edges``); ``rms_log10`` is always unweighted. ``starts``
+    lists starting shapes, (gamma0, A_hat) or (gamma0, A_hat, beta); by
+    default the plain form starts from :data:`PLAIN_STARTS`, the extended form
+    from the best plain fit with each beta of :data:`BETA_STARTS`. ``bounds``
+    replaces entries of :data:`BOUNDS`.
+
+    Each distribution needs more fit cells than a fit to it alone has
+    parameters (C and the shape), so at least one degree of freedom of its
+    own; ``ValueError`` otherwise.
     """
     if form not in FORMS:
         raise ValueError(f"form must be one of {list(FORMS)}, got {form!r}")
-    if direction not in (1, -1):
-        raise ValueError(f"direction must be +1 or -1, got {direction!r}")
+    _check_direction(direction)
+    unknown = set(bounds or {}) - set(BOUNDS)
+    if unknown:
+        raise ValueError(f"unknown bounds {sorted(unknown)}, known: {list(BOUNDS)}")
     datasets = list(datasets)
     if not datasets:
         raise ValueError("no distributions to fit")
@@ -270,16 +331,21 @@ def fit_joint(datasets, *, form: str = "extended", xi_pass=None, p_min=P_MIN,
                            xi_pass=d.xi_pass if xi_pass is None else xi_pass,
                            p_min=p_min, f_thresh=f_thresh, direction=direction)
                  for d in datasets]
-    masks = [np.asarray(m, dtype=bool) for m in masks]
-    if len(masks) != len(datasets):
-        raise ValueError(f"{len(masks)} masks for {len(datasets)} distributions")
+    else:
+        masks = [np.asarray(m, dtype=bool) for m in masks]
+        if len(masks) != len(datasets):
+            raise ValueError(f"{len(masks)} masks for {len(datasets)} distributions")
+        for k, (d, m) in enumerate(zip(datasets, masks)):
+            if m.shape != d.f.shape:
+                raise ValueError(f"mask {k} has shape {m.shape}, f has {d.f.shape}")
+            values = d.f[m]
+            if not np.all(np.isfinite(values) & (values > 0)):
+                raise ValueError(f"mask {k} selects cells where f is not finite and positive")
     names = FORMS[form]
-    for k, (d, m) in enumerate(zip(datasets, masks)):
-        if m.shape != d.f.shape:
-            raise ValueError(f"mask {k} has shape {m.shape}, f has {d.f.shape}")
+    for k, m in enumerate(masks):
         if m.sum() <= len(names) + 1:
-            raise ValueError(f"distribution {k} has {int(m.sum())} fit cells, "
-                             f"too few for the {form} form")
+            raise ValueError(f"distribution {k} has {int(m.sum())} fit cells, too few for "
+                             f"the {form} form (at least {len(names) + 2})")
     limits = {**BOUNDS, **(bounds or {})}
     lo = [math.log(limits["gamma0"][0]), math.log(limits["A_hat"][0])]
     hi = [math.log(limits["gamma0"][1]), math.log(limits["A_hat"][1])]
@@ -314,17 +380,18 @@ class _Problem:
         self.n_shape = len(FORMS[form])
         self.lo, self.hi = lo, hi
         self.y = [np.log(d.f[m]) for d, m in zip(datasets, masks)]
+        self.sw = [1.0] * len(datasets)
         if weighted:
-            self.sw = []
-            for d, m in zip(datasets, masks):
+            for k, (d, m) in enumerate(zip(datasets, masks)):
+                if d.p_edges is None:
+                    raise ValueError(f"distribution {k} has no p_edges, "
+                                     "which the content weighting needs")
                 w = d.content()[m]
-                self.sw.append(np.sqrt(w / w.sum() * w.size))
-        else:
-            self.sw = [1.0] * len(datasets)
+                self.sw[k] = np.sqrt(w / w.sum() * w.size)
 
     def shape(self, x):
         beta = x[2] if self.form == "extended" else 1.0
-        return math.exp(x[0]), math.exp(x[1]), beta
+        return math.exp(x[0]), math.exp(x[1]), float(beta)
 
     def raw(self, x, k):
         """Unweighted residuals ln model - ln f of distribution k."""
@@ -338,6 +405,8 @@ class _Problem:
         return np.concatenate([self.raw(x, k) * self.sw[k] for k in range(len(self.datasets))])
 
     def solve(self, start):
+        from scipy.optimize import least_squares  # keeps `import cdo` light
+
         start = tuple(start)
         if len(start) not in (2, 3):
             raise ValueError(f"a start is (gamma0, A_hat) or (gamma0, A_hat, beta), got {start}")
@@ -362,22 +431,31 @@ class _Problem:
         with np.errstate(invalid="ignore", divide="ignore"):
             cov = np.linalg.pinv(J.T @ J) * float(sol.fun @ sol.fun) / max(n - k, 1)
         s = np.sqrt(np.clip(np.diag(cov), 0.0, None))
-        gamma0, A_hat, beta = self.shape(x)
-        C = tuple(math.exp(v) for v in x[self.n_shape:])
-        sigma = {"gamma0": gamma0 * s[0], "A_hat": A_hat * s[1],
-                 "beta": float(s[2]) if self.form == "extended" else 0.0,
-                 "C": tuple(c * sk for c, sk in zip(C, s[self.n_shape:]))}
         names = FORMS[self.form]
-        at_bound = tuple(name for i, name in enumerate(names)
-                         if min(x[i] - self.lo[i], self.hi[i] - x[i]) < AT_BOUND_TOL)
+        bound = [min(x[i] - self.lo[i], self.hi[i] - x[i]) < AT_BOUND_TOL
+                 for i in range(self.n_shape)]
+        s[:self.n_shape][np.array(bound, dtype=bool)] = np.nan
+        gamma0, A_hat, beta = self.shape(x)
+        C = tuple(math.exp(float(v)) for v in x[self.n_shape:])
+        sigma = {"gamma0": float(gamma0 * s[0]), "A_hat": float(A_hat * s[1]),
+                 "beta": float(s[2]) if self.form == "extended" else 0.0,
+                 "C": tuple(float(c * sk) for c, sk in zip(C, s[self.n_shape:]))}
+        at_bound = tuple(name for name, b in zip(names, bound) if b)
         rms = tuple(float(np.sqrt(np.mean(self.raw(x, j) ** 2)) / math.log(10.0))
                     for j in range(len(self.datasets)))
+        rows, beam = zip(*(beam_resolution(m, d.p, d.xi_edges, A_hat, beta,
+                                           gamma_ref=self.gamma_ref, direction=self.direction)
+                           for d, m in zip(self.datasets, self.masks)))
+        resolved = tuple(r >= 2 and b <= MAX_BEAM_A_DXI for r, b in zip(rows, beam))
+        converged = bool(sol.success)
         return FitResult(
-            form=self.form, C=C, gamma0=gamma0, A_hat=A_hat, beta=float(beta), sigma=sigma,
+            form=self.form, C=C, gamma0=gamma0, A_hat=A_hat, beta=beta, sigma=sigma,
             rms_log10=rms, n_cells=tuple(int(m.sum()) for m in self.masks),
-            success=bool(sol.success) and bool(np.all(np.isfinite(x))), at_bound=at_bound,
-            gamma_ref=float(self.gamma_ref), direction=self.direction, weighted=self.weighted,
-            cost=float(sol.cost), masks=self.masks,
+            n_pitch_rows=tuple(rows), beam_A_dxi=tuple(beam), resolved=resolved,
+            converged=converged,
+            success=converged and all(resolved) and bool(np.all(np.isfinite(x))),
+            at_bound=at_bound, gamma_ref=float(self.gamma_ref), direction=self.direction,
+            weighted=self.weighted, cost=float(sol.cost), masks=self.masks,
         )
 
 
@@ -389,21 +467,25 @@ def distribution_from_run(run, *, time_ms=None, time_index=None,
     """The radially volume-averaged f(p, xi) of a run per electron, at one time.
 
     Give either ``time_ms``, a time in ms or ``"end"``, snapped to the nearest
-    stored step, or ``time_index``, a step of ``run.timegrid``. Each radial
-    cell counts with its volume, f_V = sum_r f(r) dV_r / V, and f_V is divided
-    by its density sum 2 pi p^2 f_V dxi dp over the whole ``grid``, so the
-    result sums to one over the grid. This is the f behind the ``favg_re_ravg``
-    figures: its pitch mean is their per-electron curve. ``xi_pass`` is the
-    largest trapped-passing boundary over radius. Only the one time step of f
-    is read.
+    stored step, or ``time_index``, a step of ``run.timegrid``, negative from
+    the end. ``grid`` is ``"runaway"`` or ``"hottail"``. Each radial cell
+    counts with its volume, f_V = sum_r f(r) dV_r / V, and f_V is divided by
+    its density sum 2 pi p^2 f_V dxi dp over the whole grid, so the result
+    sums to one over the grid. On the runaway grid this is the f behind the
+    ``favg_re_ravg`` figures: its pitch mean is their per-electron curve.
+    ``xi_pass`` is the largest trapped-passing boundary over radius. Only the
+    one time step of f is read.
     """
     from .selection import snap_times  # selection imports plotting, which imports avalanche
 
     if (time_ms is None) == (time_index is None):
         raise ValueError("give one of time_ms and time_index")
+    n = run.timegrid_length
     if time_index is None:
         time_index = snap_times(run.timegrid_ms, [time_ms], lines=False)[0].index
-    time_index = int(time_index) % run.timegrid_length
+    elif not -n <= int(time_index) < n:
+        raise IndexError(f"time index {time_index} outside {-n}..{n - 1}")
+    time_index = int(time_index) % n
     if grid not in ("runaway", "hottail"):
         raise ValueError(f"grid must be 'runaway' or 'hottail', got {grid!r}")
     mm = run.moments(grid)

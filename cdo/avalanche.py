@@ -228,7 +228,7 @@ def ln_distribution(p, xi_edges, n_re, gamma0, A, direction: int = 1) -> np.ndar
     :math:`\ln[n_{\rm RE}/(2\pi\gamma_0 p^2)] - \gamma/\gamma_0` plus
     :func:`ln_pitch_cell_mean`, with ``A`` given per momentum, so other
     momentum dependences of A can use it. ``p`` are momentum cell centres in
-    m_e c.
+    m_e c. ``n_re`` must be positive: zero gives -inf, a negative value NaN.
     """
     p = np.asarray(p, dtype=float)
     gamma = np.sqrt(1.0 + p**2)
