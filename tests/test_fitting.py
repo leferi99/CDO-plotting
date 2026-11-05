@@ -197,7 +197,7 @@ def test_too_few_fit_cells_raise():
 @pytest.mark.skipif(not os.path.exists(SAMPLE), reason="output_7_.h5 not present")
 def test_distribution_from_run_is_per_electron():
     import cdo
-    from cdo.plotting import _momentum_weights, _volume_mean
+    from cdo.derived import volume_average
 
     with cdo.Run([SAMPLE]) as run:
         data = fitting.distribution_from_run(run, time_ms="end")
@@ -205,9 +205,9 @@ def test_distribution_from_run_is_per_electron():
         assert data.content().sum() == pytest.approx(1.0, rel=1e-12)
         assert 0.0 <= data.xi_pass < 1.0
         # Its pitch mean is the per-electron curve of the favg_re_ravg figures.
-        favg = _volume_mean(run.angle_average("runaway", "distribution"), run.cell_volumes)
-        favg = favg[data.time_index]
-        favg /= np.nansum(favg * _momentum_weights(run, "re", "distribution"))
+        favg = run.angle_average("runaway", "distribution")[data.time_index]  # (r, p)
+        favg = volume_average(favg.T, run.cell_volumes)
+        favg /= np.nansum(favg * 4.0 * np.pi * data.p**2 * data.dp)
         pitch_mean = np.sum(data.f * data.dxi[:, None] / 2.0, axis=0)
         np.testing.assert_allclose(pitch_mean, favg, rtol=1e-10, atol=1e-14 * favg.max())
         same = fitting.distribution_from_run(run, time_index=-1)

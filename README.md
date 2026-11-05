@@ -231,7 +231,8 @@ Two forms differ in the pitch parameter A:
 In the plain form Â is (E/E_c + 1)/(Z_tot + 1) of the paper, and γ0 is c_Z lnΛ.
 In the extended form Â is A/γ at γ = γ_ref.
 γ_ref is 20 by default (`gamma_ref`).
-It only sets where Â is quoted: the fitted A(γ) does not depend on it.
+It only sets where Â is quoted.
+The fitted A(γ) does not depend on it.
 Another γ_ref' gives Â' = Â (γ_ref/γ_ref')^(1-β).
 β = 1 is the plain form, at any γ_ref.
 `FitResult.A_over_gamma(gamma)` gives A/γ at any γ.

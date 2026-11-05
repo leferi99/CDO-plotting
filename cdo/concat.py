@@ -165,8 +165,9 @@ class Run:
         ``time_index`` counts the concatenated time grid, negative from the
         end. Only that step is read, so a distribution function of a long run
         costs one slice of memory, not the whole series. Returns ``None`` when
-        the file holding the step lacks the field. A field without a time axis
-        is returned whole.
+        the file holding the step lacks the field, and the NaN step of
+        :meth:`field` once the whole series has been read. A field without a
+        time axis is returned whole.
         """
         spec = FIELDS[name]
         if spec.time is TimeAxis.NONE:
