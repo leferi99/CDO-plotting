@@ -219,7 +219,8 @@ f(p, ξ) = C / (2π γ0 p²) · exp(-γ/γ0) · A exp(-A (1 - s ξ)) / (1 - exp(
 
 with p in m_e c and γ = sqrt(1 + p²).
 `s` is the beam direction, `direction=+1` by default, as in `cdo.avalanche`.
-C is about the density the f integrates to, Σ 2π p² f Δξ Δp, so about 1 for an f per electron.
+C is about the density the f integrates to, Σ 2π p² f Δξ Δp, when the grid covers the bulk of the beam.
+For an f per electron C is then about 1.
 
 Two forms differ in the pitch parameter A:
 
@@ -256,18 +257,28 @@ For a distribution from a run, `xi_pass` is the largest trapped-passing boundary
 
 The fit is a least-squares fit of ln f(model) - ln f(data) over the fit cells, with `scipy.optimize.least_squares`, from several starting points.
 Every cell counts equally by default.
-`weighted=True` multiplies each residual by the square root of the cell content 2π p² f Δξ Δp, normalised to a mean of one.
+With `weighted=True` the cell content 2π p² f Δξ Δp, normalised to a mean of one within each distribution, enters as its square root, a factor on each residual.
+`rms_log10` is always unweighted.
 The parameters are fitted as ln γ0, ln Â, β and ln C, within `cdo.fitting.BOUNDS`.
 
 `fit_plain` and `fit_extended` return a `FitResult` with:
 
 - `C` (one per distribution), `gamma0`, `A_hat`, `beta` (1 for the plain form);
-- `sigma`, the 1σ uncertainties from the Jacobian, cov = (JᵀJ)⁻¹ SSR/(N - k);
-- `rms_log10`, the RMS of log10(f_data/f_fit) over the fit cells, and `n_cells`, per distribution;
-- `success`, and `at_bound`, the shape parameters at a bound.
+- `sigma`, the 1σ uncertainties from the Jacobian, cov = (JᵀJ)⁻¹ SSR/(N - k), as plain floats;
+- per distribution: `rms_log10`, the RMS of log10(f_data/f_fit) over the fit cells, `n_cells`, `n_pitch_rows`, `beam_A_dxi` and `resolved`;
+- `at_bound`, the shape parameters at a bound;
+- `converged`, the solver's flag, and `success`, which also needs every beam resolved.
 
 The uncertainties are statistical only and leave out the model error.
+A parameter at a bound has σ = NaN.
+With `weighted=True`, σ measures the curvature of the weighted cost and is not a proper uncertainty.
 A change of `p_min` shows how much the parameters depend on the fit window.
+
+A beam narrower than the pitch cells next to it fixes only a lower limit of A.
+The cell mean then hardly depends on A, and Â, and β with it, are bounded only from below.
+`beam_A_dxi` is A Δξ of the fit cell nearest the beam, at the momentum where it is smallest.
+The beam counts as resolved when the fit cells span at least two pitch rows and `beam_A_dxi` is at most `MAX_BEAM_A_DXI` (5).
+`beam_resolution(mask, p, xi_edges, A_hat, beta)` gives both numbers for any set of cells.
 
 ### Joint fit
 
@@ -275,13 +286,17 @@ A change of `p_min` shows how much the parameters depend on the fit window.
 γ0, Â and β are shared, and each distribution has its own C.
 `form="plain"` shares γ0 and Â only.
 The distributions can be on different grids.
+Each distribution needs at least one degree of freedom of its own: more fit cells than C and the shape parameters together.
 
 ### Data from a run
 
-`distribution_from_run(run, time_ms=...)` or `distribution_from_run(run, time_index=...)` returns a `Distribution` with the radially volume-averaged f(p, ξ) per electron of the runaway grid at one time.
+`distribution_from_run(run, time_ms=...)` or `distribution_from_run(run, time_index=...)` returns a `Distribution` with the radially volume-averaged f(p, ξ) per electron at one time.
+`time_ms` snaps to the nearest stored step and also takes `"end"`.
+`time_index` counts the stored steps, negative from the end.
+`grid` is `"runaway"` (the default) or `"hottail"`.
 Each radial cell counts with its volume, f_V = Σ_r f(r) ΔV_r / V.
 f_V is divided by Σ 2π p² f_V Δξ Δp over the whole grid, so the result sums to one.
-Its pitch mean is the per-electron curve of the `favg_re_ravg` figures.
+On the runaway grid its pitch mean is the per-electron curve of the `favg_re_ravg` figures.
 Only that time step of f is read, through `Run.field_at`.
 The `Distribution` also holds p, the edges of p and ξ, `xi_pass`, the time and the divisor, `density`, in m^-3.
 
@@ -380,6 +395,8 @@ Later reads come from the file cache and take seconds.
 ```
 
 The notebook and batch tests run on a reference run under the data root and skip when it is absent.
+A smoke test of `cdo.fitting.distribution_from_run` runs on the sample output file `output_7_.h5` in the repository root.
+The file is not tracked, and the test skips without it.
 The cross-check tests compare the native moments and integrals against `DREAMOutput`.
 They run when DREAM is importable and skip otherwise:
 
