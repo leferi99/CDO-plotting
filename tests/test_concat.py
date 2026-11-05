@@ -116,3 +116,26 @@ def test_current_matches_direct_formula(tmp_path):
 def test_empty_file_list_is_rejected():
     with pytest.raises(ValueError):
         Run([])
+
+
+def test_field_at_reads_one_step_of_the_concatenated_series(tmp_path):
+    for k, nt in enumerate((3, 4)):
+        path = tmp_path / f"output_{k}.h5"
+        write_file(path, nt=nt, t0_index=10 * k, seed=k)
+        with h5py.File(path, "a") as f:
+            # other/ fields carry one step fewer, already aligned.
+            f["other/fluid/Ectot"] = 100.0 * k + np.arange(nt - 1)[:, None] * np.ones(NR)
+    run = Run([tmp_path / "output_0.h5", tmp_path / "output_1.h5"])
+    steps = range(-run.timegrid_length, run.timegrid_length)
+    names = ("T_cold", "n_re", "Ectot")
+    # Read the steps before the whole series, so they come from the files.
+    single = {name: [run.field_at(name, i) for i in steps] for name in names}
+    assert not run._cache
+    for name in names:
+        for i, value in zip(steps, single[name]):
+            np.testing.assert_array_equal(value, run.field(name)[i])
+    with pytest.raises(IndexError):
+        run.field_at("T_cold", run.timegrid_length)
+    assert run.field_at("f_re", 0) is None
+    np.testing.assert_array_equal(run.field_at("radius", 0), run.radialgrid)
+    run.close()

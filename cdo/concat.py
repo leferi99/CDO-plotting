@@ -159,6 +159,34 @@ class Run:
         self._cache[name] = value
         return value
 
+    def field_at(self, name: str, time_index: int) -> np.ndarray | None:
+        """One time step of a canonical field, read from its own file only.
+
+        ``time_index`` counts the concatenated time grid, negative from the
+        end. Only that step is read, so a distribution function of a long run
+        costs one slice of memory, not the whole series. Returns ``None`` when
+        the file holding the step lacks the field. A field without a time axis
+        is returned whole.
+        """
+        spec = FIELDS[name]
+        if spec.time is TimeAxis.NONE:
+            return self.field(name)
+        n = self.timegrid_length
+        index = int(time_index)
+        if not -n <= index < n:
+            raise IndexError(f"time index {time_index} outside 0..{n - 1}")
+        index %= n
+        if name in self._cache:
+            return self._cache[name][index]
+        starts = np.cumsum([0, *self._nt])
+        leg = int(np.searchsorted(starts, index, side="right")) - 1
+        local = index - int(starts[leg]) + (1 if spec.time is TimeAxis.FULL else 0)
+        resolver = self._resolvers[leg]
+        path = resolver.locate(name)
+        if path is None:
+            return None
+        return np.asarray(resolver.handle[path][local], dtype=float)
+
     def _concatenate(self, name: str, spec) -> np.ndarray | None:
         reads = [r.read(name) for r in self._resolvers]
         present = [a is not None for a in reads]

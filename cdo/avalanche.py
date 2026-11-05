@@ -193,22 +193,48 @@ def distribution(params: AvalancheParams, p, xi_edges, n_re: float) -> np.ndarra
     edges. The momentum dependence is taken at the cell centres.
     """
     p = np.asarray(p, dtype=float)
+    return np.exp(ln_distribution(p, xi_edges, n_re, params.gamma0, params.A(p),
+                                  params.direction))
+
+
+def ln_pitch_cell_mean(A, xi_edges, direction: int = 1) -> np.ndarray:
+    r"""ln of the mean over each pitch cell of the normalised pitch factor.
+
+    The factor is :math:`P_A(\xi) = A\,e^{-A(1 - s\xi)} / (1 - e^{-2A})`,
+    which integrates to one over -1 <= xi <= 1. ``A`` holds one value per
+    momentum, ``xi_edges`` the pitch cell edges, ``direction`` is s. Returns
+    shape ``(xi cells, A)``. The mean is integrated in closed form and kept in
+    logarithms, so cells far from a narrow beam stay finite.
+    """
+    A = np.atleast_1d(np.asarray(A, dtype=float))[None, :]
     edges = np.asarray(xi_edges, dtype=float)
-    gamma = np.sqrt(1.0 + p**2)
-    A = params.A(p)[None, :]
     # u = 1 - s xi is the distance from the beam; per cell u_lo <= u <= u_lo + width.
-    u = 1.0 - params.direction * edges
+    u = 1.0 - direction * edges
     u_lo = np.minimum(u[:-1], u[1:])[:, None]
     width = np.abs(np.diff(edges))[:, None]
     Aw = A * width
     with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
         # Cell mean of exp(-A u): exp(-A u_lo) (1 - exp(-A w)) / (A w), tending to
         # exp(-A u_lo) for small A w.
-        shape = np.where(Aw > 1e-12, -np.expm1(-Aw) / Aw, 1.0)
-        pitch = np.exp(-A * u_lo) * shape
-        norm = A / -np.expm1(-2.0 * A)
-    radial = n_re * np.exp(-gamma / params.gamma0) / (2.0 * np.pi * params.gamma0 * p**2)
-    return radial[None, :] * norm * pitch
+        shape = np.where(Aw > 1e-12, -np.expm1(-Aw) / np.where(Aw > 1e-12, Aw, 1.0), 1.0)
+        ln_norm = np.log(A) - np.log(-np.expm1(-2.0 * A))
+    return ln_norm - A * u_lo + np.log(shape)
+
+
+def ln_distribution(p, xi_edges, n_re, gamma0, A, direction: int = 1) -> np.ndarray:
+    r"""ln of eq. (2.17) averaged over each pitch cell, shape ``(xi cells, p)``.
+
+    The general form behind :func:`distribution`:
+    :math:`\ln[n_{\rm RE}/(2\pi\gamma_0 p^2)] - \gamma/\gamma_0` plus
+    :func:`ln_pitch_cell_mean`, with ``A`` given per momentum, so other
+    momentum dependences of A can use it. ``p`` are momentum cell centres in
+    m_e c.
+    """
+    p = np.asarray(p, dtype=float)
+    gamma = np.sqrt(1.0 + p**2)
+    with np.errstate(divide="ignore"):
+        radial = np.log(n_re) - np.log(2.0 * np.pi * gamma0 * p**2) - gamma / gamma0
+    return radial[None, :] + ln_pitch_cell_mean(A, xi_edges, direction)
 
 
 def on_grid(run, grid: str, params: AvalancheParams, n_re: float) -> np.ndarray:
