@@ -107,6 +107,7 @@ Saved figures go under one figure root, `CDO_FIGURE_ROOT` if set, the repository
 | `cdo.moments` | Currents and angle-averaged distribution moments, computed from the HDF5 file. |
 | `cdo.energy` | Energy-space transform, `dn/dp` to `dn/dE`. |
 | `cdo.avalanche` | Analytic avalanche distribution (Embréus et al. 2018, eq. 2.17) and `AvalancheParams`, for overlays. |
+| `cdo.fitting` | Fits of the analytic avalanche distribution to f(p, ξ), and the radially averaged f per electron of a run. |
 | `cdo.plotting` | Low-level plot helpers, style presets, colour-map masking, time-index helpers. |
 | `cdo.labels` | Axis and quantity labels. |
 
@@ -207,6 +208,115 @@ The pitch-averaged f does not depend on E/E_c, so on the combined figures the ru
 | dreicer, compton, tritium, hottail | `gamma*` | Terms when that model is on. |
 | `*_estimate` | `gammaDreicer`, `GammaAva * n_re` | Fluid formulas DREAM writes regardless of the model. Not in the equations. Drawn dashed. |
 
+## Fitting the analytic avalanche distribution
+
+`cdo.fitting` fits the analytic avalanche distribution to a DREAM f(p, ξ).
+The distribution is eq. (2.17) of Embréus et al., J. Plasma Phys. 84 (2018) 905840506, eq. (2.12) of arXiv:1807.04460:
+
+```
+f(p, ξ) = C / (2π γ0 p²) · exp(-γ/γ0) · A exp(-A (1 - s ξ)) / (1 - exp(-2A))
+```
+
+with p in m_e c and γ = sqrt(1 + p²).
+`s` is the beam direction, `direction=+1` by default, as in `cdo.avalanche`.
+C is about the density the f integrates to, Σ 2π p² f Δξ Δp, when the grid covers the bulk of the beam.
+For an f per electron C is then about 1.
+
+Two forms differ in the pitch parameter A:
+
+| Form | A | Free parameters |
+|---|---|---|
+| plain | Â γ | C, γ0, Â |
+| extended | γ_ref Â (γ/γ_ref)^β | C, γ0, Â, β |
+
+In the plain form Â is (E/E_c + 1)/(Z_tot + 1) of the paper, and γ0 is c_Z lnΛ.
+In the extended form Â is A/γ at γ = γ_ref.
+γ_ref is 20 by default (`gamma_ref`).
+It only sets where Â is quoted.
+The fitted A(γ) does not depend on it.
+Another γ_ref' gives Â' = Â (γ_ref/γ_ref')^(1-β).
+β = 1 is the plain form, at any γ_ref.
+`FitResult.A_over_gamma(gamma)` gives A/γ at any γ.
+
+DREAM stores pitch-cell averages, and near the beam the analytic f varies on a pitch scale 1/A, which can be narrower than a cell.
+Both forms are therefore averaged over each pitch cell in closed form, as `cdo.avalanche.distribution` does.
+The momentum dependence is taken at the cell centres.
+
+### Fit cells
+
+`fit_cells` selects the cells a fit uses.
+A cell is used when:
+
+- its momentum centre is above `p_min`, 5 m_e c by default;
+- the whole pitch cell lies at s ξ ≥ `xi_pass`;
+- f is positive, finite and above `f_thresh` times the largest f, 1e-6 by default.
+
+For a distribution from a run, `xi_pass` is the largest trapped-passing boundary over radius, so every fit cell is passing at every radius.
+
+### Residuals and results
+
+The fit is a least-squares fit of ln f(model) - ln f(data) over the fit cells, with `scipy.optimize.least_squares`, from several starting points.
+Every cell counts equally by default.
+With `weighted=True` the cell content 2π p² f Δξ Δp, normalised to a mean of one within each distribution, enters as its square root, a factor on each residual.
+`rms_log10` is always unweighted.
+The parameters are fitted as ln γ0, ln Â, β and ln C, within `cdo.fitting.BOUNDS`.
+
+`fit_plain` and `fit_extended` return a `FitResult` with:
+
+- `C` (one per distribution), `gamma0`, `A_hat`, `beta` (1 for the plain form);
+- `sigma`, the 1σ uncertainties from the Jacobian, cov = (JᵀJ)⁻¹ SSR/(N - k), as plain floats;
+- per distribution: `rms_log10`, the RMS of log10(f_data/f_fit) over the fit cells, `n_cells`, `n_pitch_rows`, `beam_A_dxi` and `resolved`;
+- `at_bound`, the shape parameters at a bound;
+- `converged`, the solver's flag, and `success`, which also needs every beam resolved.
+
+The uncertainties are statistical only and leave out the model error.
+A parameter at a bound has σ = NaN.
+With `weighted=True`, σ measures the curvature of the weighted cost and is not a proper uncertainty.
+A change of `p_min` shows how much the parameters depend on the fit window.
+
+A beam narrower than the pitch cells next to it fixes only a lower limit of A.
+The cell mean then hardly depends on A, and Â, and β with it, are bounded only from below.
+`beam_A_dxi` is A Δξ of the fit cell nearest the beam, at the momentum where it is smallest.
+The beam counts as resolved when the fit cells span at least two pitch rows and `beam_A_dxi` is at most `MAX_BEAM_A_DXI` (5).
+`beam_resolution(mask, p, xi_edges, A_hat, beta)` gives both numbers for any set of cells.
+
+### Joint fit
+
+`fit_joint` fits several distributions at once, for example two runs at the same time.
+γ0, Â and β are shared, and each distribution has its own C.
+`form="plain"` shares γ0 and Â only.
+The distributions can be on different grids.
+Each distribution needs at least one degree of freedom of its own: more fit cells than C and the shape parameters together.
+
+### Data from a run
+
+`distribution_from_run(run, time_ms=...)` or `distribution_from_run(run, time_index=...)` returns a `Distribution` with the radially volume-averaged f(p, ξ) per electron at one time.
+`time_ms` snaps to the nearest stored step and also takes `"end"`.
+`time_index` counts the stored steps, negative from the end.
+`grid` is `"runaway"` (the default) or `"hottail"`.
+Each radial cell counts with its volume, f_V = Σ_r f(r) ΔV_r / V.
+f_V is divided by Σ 2π p² f_V Δξ Δp over the whole grid, so the result sums to one.
+On the runaway grid its pitch mean is the per-electron curve of the `favg_re_ravg` figures.
+Only that time step of f is read, through `Run.field_at`.
+The `Distribution` also holds p, the edges of p and ξ, `xi_pass`, the time and the divisor, `density`, in m^-3.
+
+```python
+import cdo
+from cdo import fitting
+
+run = cdo.Run.from_folder("/path/to/run")
+data = fitting.distribution_from_run(run, time_ms=40)
+plain = fitting.fit_plain(data)
+extended = fitting.fit_extended(data, gamma_ref=20.0)
+print(extended.gamma0, extended.A_hat, extended.beta, extended.sigma, extended.rms_log10)
+
+other = fitting.distribution_from_run(cdo.Run.from_folder("/path/to/other/run"), time_ms=40)
+joint = fitting.fit_joint([data, other])
+print(joint.C, joint.gamma0, joint.A_hat, joint.beta)
+```
+
+A `Distribution` can also be built from arrays, `fitting.Distribution(f, p, xi_edges, p_edges)`, with f of shape (pitch cells, momenta).
+
 ## Notebooks
 
 The notebooks are `# %%` scripts.
@@ -285,6 +395,8 @@ Later reads come from the file cache and take seconds.
 ```
 
 The notebook and batch tests run on a reference run under the data root and skip when it is absent.
+A smoke test of `cdo.fitting.distribution_from_run` runs on the sample output file `output_7_.h5` in the repository root.
+The file is not tracked, and the test skips without it.
 The cross-check tests compare the native moments and integrals against `DREAMOutput`.
 They run when DREAM is importable and skip otherwise:
 

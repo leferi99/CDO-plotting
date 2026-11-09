@@ -159,6 +159,48 @@ class Run:
         self._cache[name] = value
         return value
 
+    def field_at(self, name: str, time_index: int) -> np.ndarray | None:
+        """One time step of a canonical field, read from its own file only.
+
+        ``time_index`` counts the concatenated time grid, negative from the
+        end. Only that step is read, so a distribution function of a long run
+        costs one slice of memory, not the whole series. The result equals
+        ``field(name)[time_index]`` whether or not the series has been read:
+        ``None`` when no file has the field, a NaN step with an
+        :class:`InconsistentRunWarning` when only the file holding the step
+        lacks it. A field without a time axis is returned whole.
+        """
+        spec = self.reference.spec(name)
+        if spec.time is TimeAxis.NONE:
+            return self.field(name)
+        n = self.timegrid_length
+        index = int(time_index)
+        if not -n <= index < n:
+            raise IndexError(f"time index {time_index} outside {-n}..{n - 1}")
+        index %= n
+        if name in self._cache:
+            cached = self._cache[name]
+            return None if cached is None else cached[index]
+        starts = np.cumsum([0, *self._nt])
+        leg = int(np.searchsorted(starts, index, side="right")) - 1
+        local = index - int(starts[leg]) + (1 if spec.time is TimeAxis.FULL else 0)
+        resolver = self._resolvers[leg]
+        found = resolver.locate_all(name)
+        if found:
+            resolver._check_duplicates(name, found)
+            return np.asarray(resolver.handle[found[0]][local], dtype=float)
+        for other in self._resolvers:
+            path = other.locate(name)
+            if path is not None:
+                warnings.warn(
+                    f"'{name}' is absent from {resolver.name}; that step is NaN",
+                    InconsistentRunWarning,
+                    stacklevel=2,
+                )
+                return np.full(other.handle[path].shape[1:], np.nan)
+        # Absent from every file: None, or MissingFieldError for a required field.
+        return resolver.read(name)
+
     def _concatenate(self, name: str, spec) -> np.ndarray | None:
         reads = [r.read(name) for r in self._resolvers]
         present = [a is not None for a in reads]
